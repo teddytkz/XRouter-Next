@@ -25,8 +25,20 @@ import { updateProviderCredentials, checkAndRefreshToken } from "../services/tok
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
 import { ECC_ROUTER_BYPASS_HEADER, classifyPrompt, loadSkillPrompt, formatSkillInjection } from "@/skills/autoRouter.js";
-import { markSkillInjected } from "@/lib/session/cache.js";
+import { classifyLocalSkills, LOCAL_ROUTER_BYPASS_HEADER } from "@/skills/localSkillRouter.js";
+import { getHermesSystemPromptBlock, HERMES_MEMORY_BYPASS_HEADER } from "@/lib/plugins/hermes/memory.js";
+import { triggerHermesExtraction } from "@/lib/plugins/hermes/extraction.js";
+import { record as healthRecord } from "@/lib/routing/health.js";
+import { incrementFailover, hasPriorFailover, markSkillInjected } from "@/lib/session/cache.js";
 import { resolveSessionId } from "open-sse/utils/sessionManager.js";
+import { dispatchHook, getSkillManifests } from "@/lib/skillsRegistry.js";
+
+const CONTINUITY_NOTICE =
+  "--- Failover Notice: Upstream model/account switched. Check prior turns for existing tool results before searching again. ---";
+
+function formatSkillReminder(name, prefix = "ECC Skill") {
+  return `--- ${prefix}: ${name} (already active this conversation — see earlier turn for full instructions; do not repeat completed steps) ---`;
+}
 
 /**
  * Handle chat completion request
@@ -228,36 +240,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
-  // ECC Auto Skill Router: classify the prompt ONCE per request (before the
-  // account-fallback loop) and inject the best-matching skill prompt(s) into
-  // the system message later in chatCore. Fail-open: any error here must never
-  // break the request. Respects the per-request opt-out bypass header.
-  let eccInjection = null;
-  let eccSkills = null;
-  try {
-    const eccSettings = await getSettings();
-    if (eccSettings.ecc_auto_skill_routerEnabled && !clientRawRequest?.headers?.[ECC_ROUTER_BYPASS_HEADER]) {
-      const matches = await classifyPrompt(body, {
-        threshold: Number(eccSettings.ecc_auto_skill_routerConfidence ?? 0.35),
-        maxSkills: Number(eccSettings.ecc_auto_skill_routerMaxSkills ?? 1),
-      });
-      const sessionId = resolveSessionId({ headers: clientRawRequest?.headers, body, scope: "" });
-      const blocks = [];
-      const applied = [];
-      for (const m of matches) {
-        // Skip skills already injected earlier in this same conversation.
-        if (markSkillInjected(sessionId, m.id)) continue;
-        const promptContent = await loadSkillPrompt(m.folder);
-        if (!promptContent) continue;
-        blocks.push(formatSkillInjection(m, promptContent));
-        applied.push({ name: m.name, confidence: m.score });
-      }
-      eccInjection = blocks.length ? blocks.join("\n\n") : null;
-      eccSkills = applied.length ? applied : null;
-    }
-  } catch (err) {
-    log.warn("CHAT", "ECC skill router disabled (classify failed):", err?.message || err);
-  }
+  // Resolve session ID for hook context
+  const sessionId = resolveSessionId({ headers: clientRawRequest?.headers, body, scope: "" });
 
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
@@ -298,7 +282,187 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // Use shared chatCore
     const chatSettings = await getSettings();
+    const t0 = Date.now();
     const providerThinking = (chatSettings.providerThinking || {})[provider] || null;
+
+    // Resolve generic active prompts
+    const manifests = await getSkillManifests();
+    const activeGenericPrompts = [];
+
+    if (sessionId && hasPriorFailover(sessionId)) {
+      activeGenericPrompts.push({ id: "continuity-notice", prompt: CONTINUITY_NOTICE });
+    }
+    for (const skill of manifests) {
+      const isRoutableCandidate =
+        skill.routable === true ||
+        (Array.isArray(skill.config_schema) && skill.config_schema.some((c) => c.key === "routing_mode"));
+      const routingMode =
+        chatSettings[`${skill.id}RoutingMode`] ??
+        chatSettings[`${skill.id}_routing_mode`] ??
+        skill.config_schema?.find((c) => c.key === "routing_mode")?.default ??
+        (skill.routable ? "smart" : "always");
+
+      if (
+        skill.hook === "system-prompt" &&
+        skill.id !== "caveman" &&
+        skill.id !== "ponytail" &&
+        skill.id !== "ecc-auto-skill-router" &&
+        skill.id !== "hermes-toolkit" &&
+        !(isRoutableCandidate && routingMode === "smart")
+      ) {
+        const enabledKey = skill.legacy_enabled_key || `${skill.id}Enabled`;
+        const isEnabled = chatSettings[enabledKey] !== undefined ? !!chatSettings[enabledKey] : !!skill.default_enabled;
+        if (isEnabled && skill.prompt_template) {
+          let prompt = skill.prompt_template;
+          if (Array.isArray(skill.config_schema) && skill.config_schema.length > 0) {
+            const paramLines = [];
+            for (const cfg of skill.config_schema) {
+              if (cfg.key === "routing_mode") continue;
+              const key = cfg.legacy_key || cfg.key;
+              const val = chatSettings[key] !== undefined ? chatSettings[key] : cfg.default;
+              if (prompt.includes(`{${cfg.key}}`)) {
+                prompt = prompt.replace(new RegExp(`\\{${cfg.key}\\}`, "g"), val);
+              } else {
+                paramLines.push(`- ${cfg.label || cfg.key}: ${val}${cfg.type === "slider" ? ` (scale ${cfg.min ?? 1}-${cfg.max ?? 10})` : ""}`);
+              }
+            }
+            if (paramLines.length > 0) {
+              prompt += `\n\nActive Configuration:\n${paramLines.join("\n")}`;
+            }
+          }
+          activeGenericPrompts.push({ id: skill.id, prompt });
+        }
+      }
+    }
+
+    // Hermes Agent Memory Injection
+    const hermesBypass = clientRawRequest?.headers?.[HERMES_MEMORY_BYPASS_HEADER]?.toLowerCase() === "off" ||
+      clientRawRequest?.headers?.["x-9router-hermes-memory"]?.toLowerCase() === "off";
+
+    const hermesToolkitEnabled = !hermesBypass && (
+      chatSettings["hermes-toolkitEnabled"] !== undefined
+        ? !!chatSettings["hermes-toolkitEnabled"]
+        : chatSettings.hermesToolkitEnabled !== undefined
+          ? !!chatSettings.hermesToolkitEnabled
+          : true
+    );
+
+    let hermesMemoryInjected = false;
+    if (hermesToolkitEnabled) {
+      try {
+        const hermesBlock = await getHermesSystemPromptBlock();
+        if (hermesBlock) {
+          activeGenericPrompts.push({ id: "hermes-toolkit", prompt: hermesBlock });
+          hermesMemoryInjected = true;
+        }
+      } catch (err) {
+        log.warn("HERMES", `Hermes memory read failed (fail-open): ${err.message}`);
+      }
+    }
+
+    // ECC Auto Skill Router: dynamically match query and inject prompt
+    const eccBypass = clientRawRequest?.headers?.[ECC_ROUTER_BYPASS_HEADER]?.toLowerCase() === "off" || clientRawRequest?.headers?.["x-9router-skill-router"]?.toLowerCase() === "off";
+    const eccRouterEnabled = !eccBypass && (
+      chatSettings.ecc_auto_skill_routerEnabled !== undefined
+        ? !!chatSettings.ecc_auto_skill_routerEnabled
+        : !!chatSettings["ecc-auto-skill-routerEnabled"]
+    );
+
+    if (eccRouterEnabled) {
+      try {
+        const threshold = chatSettings.ecc_auto_skill_routerConfidence !== undefined
+          ? Number(chatSettings.ecc_auto_skill_routerConfidence)
+          : chatSettings.confidence_threshold !== undefined
+            ? Number(chatSettings.confidence_threshold)
+            : 0.35;
+        const maxSkills = chatSettings.ecc_auto_skill_routerMaxSkills !== undefined
+          ? Number(chatSettings.ecc_auto_skill_routerMaxSkills)
+          : chatSettings.max_skills !== undefined
+            ? Number(chatSettings.max_skills)
+            : 1;
+        const matches = await classifyPrompt(body, { threshold, maxSkills });
+        const matchedSkills = [];
+
+        if (matches && matches.length > 0) {
+          for (const match of matches) {
+            const promptContent = await loadSkillPrompt(match.folder);
+            if (promptContent && promptContent.trim()) {
+              const alreadyInjected = sessionId && markSkillInjected(sessionId, `ecc-${match.folder}`);
+              const formattedPrompt = alreadyInjected
+                ? formatSkillReminder(match.name)
+                : formatSkillInjection(match, promptContent);
+              activeGenericPrompts.push({ id: `ecc-${match.name}`, prompt: formattedPrompt });
+              matchedSkills.push({ name: match.name, score: match.score, folder: match.folder });
+              if (process.env.ENABLE_REQUEST_LOGS === "true") {
+                log.info("ECC-ROUTER", `[ecc-auto-skill-router] Matched skill: ${match.name} (confidence ${match.score})`);
+              }
+            }
+          }
+        }
+      } catch (err) {
+        log.warn("ECC-ROUTER", `Classification failed (fail-open): ${err.message}`);
+      }
+    }
+
+    // Local Skill Router: topic-aware injection for routable local skills
+    const localRouterBypass = clientRawRequest?.headers?.[LOCAL_ROUTER_BYPASS_HEADER]?.toLowerCase() === "off";
+    if (!localRouterBypass) {
+      try {
+        const localMatches = await classifyLocalSkills(body, chatSettings);
+        for (const match of localMatches) {
+          let prompt = match.prompt_template;
+          const skill = match.skill;
+          if (Array.isArray(skill?.config_schema) && skill.config_schema.length > 0) {
+            const paramLines = [];
+            for (const cfg of skill.config_schema) {
+              if (cfg.key === "routing_mode") continue;
+              const key = cfg.legacy_key || cfg.key;
+              const val = chatSettings[key] !== undefined ? chatSettings[key] : cfg.default;
+              if (prompt.includes(`{${cfg.key}}`)) {
+                prompt = prompt.replace(new RegExp(`\\{${cfg.key}\\}`, "g"), val);
+              } else {
+                paramLines.push(`- ${cfg.label || cfg.key}: ${val}${cfg.type === "slider" ? ` (scale ${cfg.min ?? 1}-${cfg.max ?? 10})` : ""}`);
+              }
+            }
+            if (paramLines.length > 0) prompt += `\n\nActive Configuration:\n${paramLines.join("\n")}`;
+          }
+          const alreadyInjectedLocal = sessionId && markSkillInjected(sessionId, `local-${match.id}`);
+          if (alreadyInjectedLocal) prompt = formatSkillReminder(match.name, "Local Skill");
+          activeGenericPrompts.push({ id: `local-${match.id}`, prompt });
+          if (process.env.ENABLE_REQUEST_LOGS === "true") {
+            log.info("LOCAL-SKILL-ROUTER", `[local-skill-router] Matched skill: ${match.name} (confidence ${match.score})`);
+          }
+        }
+      } catch (err) {
+        log.warn("LOCAL-SKILL-ROUTER", `Local skill classification failed (fail-open): ${err.message}`);
+      }
+    }
+    const matchedSkills = activeGenericPrompts
+      .filter((p) => p.id && p.id.startsWith("ecc-"))
+      .map((p) => ({ name: p.id.replace(/^ecc-/, "") }));
+
+    // Collect enabled pre-route hook skills
+    const enabledPreRouteSkills = manifests
+      .filter((s) => s.hook === "pre-route")
+      .filter((s) => {
+        const key = s.legacy_enabled_key || `${s.id}Enabled`;
+        return chatSettings[key] !== undefined ? !!chatSettings[key] : !!s.default_enabled;
+      })
+      .map((s) => s.id);
+
+    // Dispatch pre-route hooks (mutate body before routing)
+    if (enabledPreRouteSkills.length > 0) {
+      try {
+        body = await dispatchHook("pre-route", enabledPreRouteSkills, body, {
+          provider,
+          model,
+          sessionId,
+          headers: clientRawRequest?.headers,
+        });
+      } catch (err) {
+        log.warn("HOOKS", `Pre-route hook failed (fail-open): ${err?.message || err}`);
+      }
+    }
     const result = await handleChatCore({
       body: { ...body, model: `${provider}/${model}` },
       modelInfo: { provider, model },
@@ -308,6 +472,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       connectionId: credentials.connectionId,
       userAgent,
       apiKey,
+      eccSkills: matchedSkills.length > 0 ? matchedSkills : undefined,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
       rtkEnabled: !!chatSettings.rtkEnabled,
       headroomEnabled: !!chatSettings.headroomEnabled,
@@ -318,15 +483,17 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,
       ponytailLevel: chatSettings.ponytailLevel || "full",
-      eccInjection,
-      eccSkills,
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
       // Lazily warms the in-process module on first use; null when not installed (fail-open)
       pxpipeTransform: chatSettings.pxpipeEnabled ? await getPxpipeTransform() : null,
       onPxpipeEvent: appendPxpipeEvent,
+      // Phase 4: sliding-window token trimmer
+      trimEnabled: !!chatSettings.tokenSaverEnabled,
+      trimBudget: chatSettings.tokenSaverBudget || 80000,
       providerThinking,
+      activeGenericPrompts,
       // Detect source format by endpoint + body
       sourceFormatOverride: request?.url ? detectFormatByEndpoint(new URL(request.url).pathname, body) : null,
       onCredentialsRefreshed: async (newCreds) => {
@@ -343,7 +510,64 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       }
     });
 
-    if (result.success) return result.response;
+    if (result.success) {
+      healthRecord(provider, { success: true, latencyMs: Date.now() - t0 });
+
+      // Add trace headers
+      try {
+        if (result.response && result.response.headers) {
+          result.response.headers.set("x-9r-hermes-memory", hermesMemoryInjected ? "hit" : "miss");
+        }
+      } catch { }
+
+      // Asynchronous smart memory extraction
+      if (hermesToolkitEnabled) {
+        const lastUserText = typeof body === "object" ? (
+          Array.isArray(body.messages) ? body.messages.filter((m) => m && m.role === "user").pop()?.content :
+            Array.isArray(body.input) ? body.input.filter((i) => i && i.role === "user").pop()?.content :
+              null
+        ) : null;
+
+        if (typeof lastUserText === "string") {
+          triggerHermesExtraction({
+            text: lastUserText,
+            sessionId,
+            settings: chatSettings,
+            handleSingleModelChat: (b, m, raw, req, k) => handleSingleModelChat(b, m, raw, req, k),
+            apiKey,
+            log,
+          });
+        }
+      }
+
+      // Collect enabled post-response hook skills
+      const enabledPostResponseSkills = manifests
+        .filter((s) => s.hook === "post-response")
+        .filter((s) => {
+          const key = s.legacy_enabled_key || `${s.id}Enabled`;
+          return chatSettings[key] !== undefined ? !!chatSettings[key] : !!s.default_enabled;
+        })
+        .map((s) => s.id);
+
+      // Dispatch post-response hooks for non-streaming responses
+      if (enabledPostResponseSkills.length > 0 && result.response && !result.response.body) {
+        try {
+          const responseData = await result.response.json();
+          const mutatedResponse = await dispatchHook("post-response", enabledPostResponseSkills, responseData, {
+            provider,
+            model,
+            sessionId,
+          });
+          return new Response(JSON.stringify(mutatedResponse), {
+            status: result.response.status,
+            headers: result.response.headers,
+          });
+        } catch (err) {
+          log.warn("HOOKS", `Post-response hook failed (fail-open): ${err?.message || err}`);
+        }
+      }
+      return result.response;
+    }
 
     // Antigravity 409/429: refresh live quota to get exact resetAt before locking
     let quotaResetMs = null;
@@ -363,6 +587,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       : (await markAccountUnavailable(credentials.connectionId, result.status, result.error, provider, model, resetsAtMs)).shouldFallback;
 
     if (shouldFallback) {
+      healthRecord(provider, { success: false, latencyMs: Date.now() - t0 });
+      try {
+        if (sessionId) incrementFailover(sessionId);
+        incrementFailover(credentials.connectionId);
+      } catch { /* fail-open */ }
       log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
