@@ -47,3 +47,11 @@ export async function runHealthCheck() {
 
   return { healthy: true, checks, error: null };
 }
+
+// Trigger a fresh npm install of pxpipe. installPxpipe already handles the
+// "already installed" + "in flight" cases, so update is just install().
+export async function updatePxpipe() {
+  const { installPxpipe } = await import("./install.js");
+  await installPxpipe();
+  return { updated: true };
+}

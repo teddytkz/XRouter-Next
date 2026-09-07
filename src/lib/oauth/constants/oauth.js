@@ -224,3 +224,15 @@ export const PROVIDERS = {
   WINDSURF: "windsurf",
   ZED: "zed",
 };
+
+// Freebuff / Codebuff uses a custom fingerprint device-code flow (not OAuth2),
+// so the static config only carries the field names that the provider's
+// `requestDeviceCode` / `pollToken` closures read off the runtime `config` arg
+// (see src/lib/oauth/providers/freebuff.js). Kept for backward-compat with
+// imports that expect a FREEBUFF_CONFIG symbol.
+export const FREEBUFF_CONFIG = {
+  baseUrl: "https://freebuff.com",
+  loginCodePath: "/api/auth/cli/code",
+  loginStatusPath: "/api/auth/cli/status",
+  oauthTimeoutMs: 300000,
+};

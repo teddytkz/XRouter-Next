@@ -1,5 +1,19 @@
 # PRD: XRouter-Next = Next + 9Router Extended (merge)
 
+**Status (2026-09-07):** FASE 0–7 ✅ selesai. FASE 8 (build & verify) ⏳ next.
+
+| FASE | Deskripsi | Commit | Status |
+|---|---|---|---|
+| 0 | Rebrand ke XRouter-Next (keep `~/.9router/` data path) | `e68f5ec4` | ✅ |
+| 1 | Freebuff provider (executor, registry, oauth, usage) | `bccd415f` | ✅ |
+| 2 | Routing health/probe/ranking + combos/suggest + latency-stream | `3a75e498` | ✅ |
+| 3 | Hermes plugin subsystem (7 lib + 9 API + session cache + update-check) | (lanjutan) | ✅ |
+| 4 | Skills registry + 14 skill packs + autoRouter/localSkillRouter/tfidf | (lanjutan) | ✅ |
+| 5 | Autostart + version + setup wizard + tunnel/pxpipe update | `2b29d6a7` | ✅ |
+| 6 | Test suite porting (15 unit + mem-budget + snapshot) | `e967dc89` | ✅ |
+| 7 | opencode-go regresi guard (5 file + 5 test files intact) | verification-only | ✅ |
+| 8 | `npm install` + `npm run build` + smoke test | — | ⏳ |
+
 **Branch base:** `next` (XRouter-Next v0.5.69) — **lebih baru** dari `origin/master`, jadi dipakai sebagai base.
 **Branch sumber:** `origin/fixing-cli-token` (= `extended` HEAD, v0.5.65-extended).
 **Tujuan:** gabungkan SEMUA fitur extended ke `next`, tanpa kehilangan fitur `next` (opencode-go, Muse Spark, Claude Fable, Antigravity quota group, dsb).

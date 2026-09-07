@@ -19,3 +19,7 @@ export {
   getPricing, getPricingForModel, updatePricing, resetPricing, resetAllPricing,
   exportDb, importDb,
 } from "@/lib/db/index.js";
+
+// Legacy: modelProbe.js imported getDisabledModels from here. Real home is
+// `@/lib/disabledModelsDb` — re-export so the legacy import path still works.
+export { getDisabledModels } from "@/lib/disabledModelsDb.js";
