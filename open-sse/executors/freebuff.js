@@ -77,12 +77,18 @@ function injectEndTurnTool(body) {
   return { ...body, tools: [...tools, END_TURN_TOOL] };
 }
 
+// Mirrors FREEBUFF_CLI_BASE3_AGENT_ID_BY_MODEL in CodebuffAI/freebuff
+// (common/src/constants/free-agents.ts). v4-pro and mimo-m3 are dropped because
+// they are paused upstream; requesting them now routes to the FALLBACK model.
 const FREE_ROOT_AGENT_BY_MODEL = {
+  "z-ai/glm-5.3-flash": "base3-free-glm-5-3-flash",
   "deepseek/deepseek-v4-flash": "base3-free-deepseek-flash",
-  "deepseek/deepseek-v4-pro": "base3-free-deepseek",
-  "mimo/mimo-v2.5": "base3-free-mimo",
-  "minimax/minimax-m3": "base3-free-minimax-m3",
   "openai/gpt-5.6-luna": "base3-free-luna",
+  "mimo/mimo-v2.5": "base3-free-mimo",
+  "upstage/solar-pro4": "base3-free-solar-pro4",
+  "meta/muse-spark-1.3-contributor": "base3-free-muse-spark-1-3",
+  "meta/muse-spark-1.2-contributor": "base3-free-muse-spark",
+  "anthropic/claude-fable-5": "base3-free-fable",
 };
 
 const FB_STATE_KEY = "__9routerFreebuffState__";

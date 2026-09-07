@@ -62,15 +62,23 @@ const freebuffRegistry = {
   features: {
     usage: true,
   },
-  // Mirrors the CLI's free picker (FREEBUFF_ROOT_AGENT_ID_BY_MODEL).
-  // mimo/mimo-v2.5-pro is intentionally absent — it is not a free-tier model
-  // and would bill credits or be rejected under the base3-free agent.
+  // Mirrors the upstream CLI's free picker (FREEBUFF_CLI_BASE3_AGENT_ID_BY_MODEL
+  // in CodebuffAI/freebuff, common/src/constants/free-agents.ts). v4-pro and
+  // mimo-m3 are intentionally absent — both are paused upstream (2026-08-26 and
+  // 2026-08-20) and now route to the FALLBACK_MODEL_ID instead of being served.
+  // Each `tier` is the upstream access tier the model is gated to; the picker
+  // in EditConnectionModal currently lists all entries, and Strict Model
+  // Assignment is a per-connection choice — the tier annotation is here for
+  // future filter UI, not for runtime rejection.
   models: [
-    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
-    { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
-    { id: "mimo/mimo-v2.5", name: "MiMo 2.5" },
-    { id: "minimax/minimax-m3", name: "MiniMax M3" },
-    { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna" },
+    { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash", tier: "full" },
+    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash", tier: "full" },
+    { id: "openai/gpt-5.6-luna", name: "GPT-5.6 Luna", tier: "full" },
+    { id: "mimo/mimo-v2.5", name: "MiMo 2.5", tier: "full" },
+    { id: "upstage/solar-pro4", name: "Solar Pro 4", tier: "limited" },
+    { id: "meta/muse-spark-1.3-contributor", name: "Muse Spark 1.3", tier: "full" },
+    { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2", tier: "full" },
+    { id: "anthropic/claude-fable-5", name: "Claude Fable 5", tier: "limited" },
   ],
   // Login-flow host — the CLI in freebuff mode logs in via freebuff.com, and
   // the server builds loginUrl from the host it was called on, so the link the
