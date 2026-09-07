@@ -134,11 +134,11 @@
     "3. narrow retry logic",
     "4. prompt caching",
     "composition",
-    "pricing reference (2025-2026)",
+    "pricing reference (2026)",
     "best practices",
     "anti-patterns to avoid",
     "when to use"
   ],
-  "content_hash": "33fe4a3122e5c7f7cbd0fb494fb37f134deca2b7902ca4b3bda4445aeac29caa",
+  "content_hash": "b68daf789011c42713f3d8d5ea441032fafbea85cf964e3b8c888a5756e318a2",
   "config_schema": []
 }

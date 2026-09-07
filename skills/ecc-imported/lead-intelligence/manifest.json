@@ -144,6 +144,7 @@
     "tool requirements",
     "required",
     "optional (enhance results)",
+    "untrusted source content",
     "pipeline overview",
     "voice before outreach",
     "stage 1: signal scoring",
@@ -174,6 +175,6 @@
     "example usage",
     "related skills"
   ],
-  "content_hash": "6dcf263e941a1bde9aff753e76023657805649217811a7d80ab1420d81cccbfd",
+  "content_hash": "ac80f4e5f125bbe543cb96e0f4a7478c89d342ca5a7a1d94a1425a68baf84425",
   "config_schema": []
 }

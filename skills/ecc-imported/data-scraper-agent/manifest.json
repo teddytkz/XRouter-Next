@@ -142,6 +142,7 @@
     "batch api calls for efficiency",
     "bad: 33 api calls for 33 items",
     "good: 7 api calls for 33 items (batch size 5)",
+    "untrusted scraped data",
     "workflow",
     "step 1: understand the goal",
     "step 2: design the collection architecture",
@@ -185,6 +186,6 @@
     "real-world examples",
     "reference implementation"
   ],
-  "content_hash": "9088b02d495e7dc9f3daf3c53b3bbc1dbb0e6a76ac8cac797fb196397fccf3ba",
+  "content_hash": "2ff98d75efa7f6df4c67037b47cfd4283fc3368319b65121df2b49ae6ca716ba",
   "config_schema": []
 }

@@ -153,9 +153,10 @@
     "when to update",
     "comment templates",
     "security guidelines",
+    "ticket content is untrusted",
     "troubleshooting",
     "best practices"
   ],
-  "content_hash": "23b2e60d654b59d4f24bdf8776b6cb7c2277f079309d07411a193efdac246ce7",
+  "content_hash": "8d0138883630d050332ece6af1e0cdaf2c8a439a5933b79b9fb9deeeefe3f4c8",
   "config_schema": []
 }

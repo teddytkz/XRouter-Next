@@ -124,12 +124,10 @@
     "codex",
     "config",
     "toml",
-    "step",
-    "understand",
-    "goal",
-    "1-2",
-    "quick",
-    "clari"
+    "untrusted",
+    "untrust",
+    "everything",
+    "everyth"
   ],
   "triggers": [
     "deep-research",
@@ -144,6 +142,7 @@
     "due diligence on companies, investors, or technologies",
     "any question requiring synthesis from multiple sources",
     "mcp requirements",
+    "untrusted sources",
     "workflow",
     "step 1: understand the goal",
     "step 2: plan the research",
@@ -163,6 +162,6 @@
     "quality rules",
     "examples"
   ],
-  "content_hash": "31cb97e838ff9cfc6c67968165925a3d00eb48883c4115e11af873967d693e1d",
+  "content_hash": "09ce4ff40e02a506b7a32e71eaf4a8db7685c4f3c703cb074b9a508e72ae8f6f",
   "config_schema": []
 }

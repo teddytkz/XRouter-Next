@@ -163,11 +163,14 @@
     "routine bash gate (once per session)",
     "quick start",
     "option a: use the ecc hook (zero install)",
+    "graduated controls",
+    "turning the gate off completely",
+    "glob semantics for `gateguard_exempt_globs`",
     "option b: full package with config",
     "anti-patterns",
     "best practices",
     "related skills"
   ],
-  "content_hash": "720784a1da802d6c4dfcea9b5237049161c7da01a969f42049181994f2f81d08",
+  "content_hash": "15dc74f3d666a87e8bd29c4b0d3d63637fd064df52df6bc6c07df6d57e0118ea",
   "config_schema": []
 }

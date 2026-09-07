@@ -126,6 +126,7 @@
     "skill stack",
     "when to use",
     "guardrails",
+    "inbound mail is untrusted",
     "workflow",
     "1. resolve the exact surface",
     "2. read the thread before composing",
@@ -135,6 +136,6 @@
     "pitfalls",
     "verification"
   ],
-  "content_hash": "bb4ad13fae32394fbabb5310f38f0e1e8426236263d709a90db1226fb965a403",
+  "content_hash": "ba4ea541bfd21c6e93ec035ce9b9bd57a0036eca953de7e676bace4c406d9ca2",
   "config_schema": []
 }

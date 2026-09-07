@@ -134,6 +134,7 @@
     "running background research for any development task",
     "user says \"search for\", \"look up\", \"find\", or \"what's the latest on\"",
     "mcp requirement",
+    "untrusted results",
     "core tools",
     "web_search_exa",
     "get_code_context_exa",
@@ -145,6 +146,6 @@
     "tips",
     "related skills"
   ],
-  "content_hash": "edfcbb27d6f478f22f1ed63ba2eeff9f3669710bcfe8c9205aabfa8500200452",
+  "content_hash": "21c5234fa9d52a4ee228f0fd5a930bb40b07c85a6867599ac29cf701bbd4cdea",
   "config_schema": []
 }

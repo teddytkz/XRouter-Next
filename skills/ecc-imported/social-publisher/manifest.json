@@ -140,9 +140,10 @@
     "6. monitor",
     "supported providers",
     "security",
+    "fetched content is untrusted",
     "related skills",
     "source"
   ],
-  "content_hash": "8292c57c6a47b7a0c92b22cbfc5ec02f9321f858b77d189c60b0d2c22752428b",
+  "content_hash": "5fbd3c0cc2c859f586dd423cfbe1ff4f21f2b7270a4caa319a86ab378794f4b2",
   "config_schema": []
 }
