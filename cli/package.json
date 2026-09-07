@@ -1,9 +1,9 @@
 {
-  "name": "xrouter",
+  "name": "9router",
   "version": "0.5.69",
   "description": "XRouter-Next CLI - Start and manage XRouter-Next server",
   "bin": {
-    "xrouter": "./cli.js"
+    "9router": "./cli.js"
   },
   "files": [
     "cli.js",
