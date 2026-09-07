@@ -12,7 +12,7 @@
 | 5 | Autostart + version + setup wizard + tunnel/pxpipe update | `2b29d6a7` | ✅ |
 | 6 | Test suite porting (15 unit + mem-budget + snapshot) | `e967dc89` | ✅ |
 | 7 | opencode-go regresi guard (5 file + 5 test files intact) | verification-only | ✅ |
-| 8 | `npm install` + `npm run build` + smoke test | — | ⏳ |
+| 8 | `npm install` + `npm run build` + smoke test | `88a19160` | ✅ |
 
 **Branch base:** `next` (XRouter-Next v0.5.69) — **lebih baru** dari `origin/master`, jadi dipakai sebagai base.
 **Branch sumber:** `origin/fixing-cli-token` (= `extended` HEAD, v0.5.65-extended).
