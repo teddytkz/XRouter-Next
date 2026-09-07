@@ -1,0 +1,92 @@
+{
+  "id": "caveman",
+  "name": "Caveman",
+  "description": "Terse-style system prompt → ~65% fewer output tokens (up to 87%)",
+  "category": "prompt-injection",
+  "hook": "system-prompt",
+  "default_enabled": false,
+  "legacy_enabled_key": "cavemanEnabled",
+  "source": "https://github.com/JuliusBrussee/caveman",
+  "config_schema": [
+    {
+      "key": "level",
+      "type": "enum",
+      "options": [
+        {
+          "value": "lite",
+          "label": "Lite",
+          "desc": "Drop filler, keep grammar"
+        },
+        {
+          "value": "full",
+          "label": "Full",
+          "desc": "Drop articles, fragments OK"
+        },
+        {
+          "value": "ultra",
+          "label": "Ultra",
+          "desc": "Telegraphic, max compression"
+        },
+        {
+          "value": "wenyan-lite",
+          "label": "文 Lite",
+          "desc": "Classical Chinese, light compression",
+          "wenyan": true
+        },
+        {
+          "value": "wenyan",
+          "label": "文 Full",
+          "desc": "Maximum 文言文, 80-90% reduction",
+          "wenyan": true
+        },
+        {
+          "value": "wenyan-ultra",
+          "label": "文 Ultra",
+          "desc": "Extreme classical compression",
+          "wenyan": true
+        }
+      ],
+      "default": "full",
+      "legacy_key": "cavemanLevel"
+    },
+    {
+      "key": "routing_mode",
+      "type": "enum",
+      "label": "Activation Mode",
+      "options": [
+        {
+          "value": "smart",
+          "label": "Smart (topic-aware)",
+          "desc": "Inject only when message asks for terse/brief answers"
+        },
+        {
+          "value": "always",
+          "label": "Always Active",
+          "desc": "Inject on every request"
+        }
+      ],
+      "default": "always"
+    }
+  ],
+  "routable": true,
+  "routing_threshold": 0.35,
+  "triggers": [
+    "terse",
+    "be concise",
+    "short answer",
+    "briefly",
+    "no filler",
+    "drop pleasantries",
+    "caveman style"
+  ],
+  "keywords": [
+    "terse",
+    "concise",
+    "brief",
+    "short",
+    "compression",
+    "tokens",
+    "filler"
+  ],
+  "version": "2.4.0"
+}
