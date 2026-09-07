@@ -16,7 +16,7 @@
   "scripts": {
     "dev": "nodemon -I --watch cli.js --watch src --watch hooks --ext js,json cli.js",
     "build": "node scripts/build-cli.js",
-    "pack:cli": "npm run build && npm pack --pack-destination ..",
+    "pack:cli": "npm run build && npm pack --pack-destination .. && cd .. && mv 9router-0.5.69.tgz xrouter-0.5.69.tgz",
     "publish:cli": "npm run build && npm publish",
     "postinstall": "node hooks/postinstall.js",
     "prepublishOnly": "npm run build"
