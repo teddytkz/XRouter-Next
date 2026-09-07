@@ -110,9 +110,10 @@ function getDisplayHost() {
   return host === DEFAULT_HOST ? "localhost" : host;
 }
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
+// Identifiers for killAllAppProcesses - only kill ours specifically
+// ponytail: keep ~/.9router/ user-data dir for back-compat (user upgrades)
 const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
+  '9router'
 ];
 
 // Parse arguments
@@ -300,7 +301,7 @@ function killAllAppProcesses(appPort) {
 
           lines.forEach(line => {
             // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing grep/strace/editors/cursor that incidentally match "9router".
+            // Avoids killing grep/strace/editors/cursor that incidentally match.
             const cmd = line.toLowerCase();
             const isAppProcess =
               (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))

@@ -2,7 +2,7 @@
 <div align="center">
   <img src="./images/9router.png?1" alt="9Router Dashboard" width="800"/>
   
-  # 9Router - 免费 AI 路由器与 Token 节省器
+  # XRouter-Next - AI 路由器与 Token 节省器（fork of 9Router）
   
   **编程永不停歇。使用 RTK + 自动切换到免费/低价 AI 模型，节省 20-40% 的 tokens。**
   
@@ -21,7 +21,7 @@
 
 ---
 
-## 🤔 为什么选择 9Router？
+## 🤔 为什么选择 XRouter-Next？
 
 **告别浪费金钱、tokens 和触碰限制的困扰：**
 
@@ -31,7 +31,7 @@
 - ❌ 昂贵的 API（每个提供商 $20-50/月）
 - ❌ 需要手动在提供商之间切换
 
-**9Router 解决这一切：**
+**XRouter-Next 解决这一切：**
 
 - ✅ **RTK Token 节省器** - 自动压缩 tool_result 内容，每次请求节省 20-40% tokens
 - ✅ **充分利用订阅** - 追踪配额，在重置前用尽每一分额度
@@ -51,7 +51,7 @@
        │ http://localhost:20128/v1
        ↓
 ┌─────────────────────────────────────────────┐
-│           9Router（智能路由器）              │
+│           XRouter-Next（智能路由器）              │
 │  • RTK Token 节省器（减少 tool_result tokens）│
 │  • 格式转换（OpenAI ↔ Claude）              │
 │  • 配额追踪                                  │

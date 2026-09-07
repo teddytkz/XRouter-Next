@@ -447,3 +447,6 @@ export function isCloudflaredRunning() {
     return false;
   }
 }
+
+// Exposed for tunnel/update + version routes that need to swap the binary on disk.
+export { BIN_PATH };

@@ -1,7 +1,7 @@
 export default function manifest() {
   return {
-    name: '9Router - AI Infrastructure Management',
-    short_name: '9Router',
+    name: 'XRouter Next - AI Infrastructure Management',
+    short_name: 'XRouter Next',
     description: 'One endpoint for all your AI providers. Manage keys, monitor usage, and scale effortlessly.',
     start_url: '/',
     display: 'standalone',

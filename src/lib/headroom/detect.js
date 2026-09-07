@@ -1,4 +1,5 @@
 import { execFileSync, execSync } from "child_process";
+import net from "net";
 import path from "path";
 
 // Extras that improve headroom compression quality. `proxy` is the base;
@@ -166,6 +167,47 @@ export async function getHeadroomStatus(url) {
 // call is enough to answer both questions.
 //
 // Returns: { installed: bool, version: string|null, extras: { code, ml } }
+/** Check if a TCP port is available to bind on localhost. */
+export async function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.unref();
+    server.on("error", () => resolve(false));
+    server.listen(port, "127.0.0.1", () => {
+      server.close(() => resolve(true));
+    });
+  });
+}
+
+/** Find the first available port starting from startPort. */
+export async function findAvailablePort(startPort = 8787, maxTries = 20) {
+  for (let port = startPort; port < startPort + maxTries; port++) {
+    if (await isPortAvailable(port)) return port;
+  }
+  return startPort;
+}
+
+/** Scan common ports to see if a Headroom instance is already running. */
+export async function autoDetectHeadroomPort(preferredUrl = null) {
+  const candidatePorts = [8787, 8788, 8789, 8790, 8791];
+
+  if (preferredUrl) {
+    try {
+      const u = new URL(preferredUrl);
+      const p = parseInt(u.port, 10);
+      if (p && !candidatePorts.includes(p)) candidatePorts.unshift(p);
+    } catch {}
+  }
+
+  for (const port of candidatePorts) {
+    const testUrl = `http://localhost:${port}`;
+    if (await probeProxyRunning(testUrl)) {
+      return { found: true, port, url: testUrl };
+    }
+  }
+  return { found: false, port: null, url: null };
+}
+
 export function getInstalledHeadroomExtras(python) {
   const py = python || findPython310();
   if (!py) return { installed: false, version: null, extras: { code: false, ml: false } };

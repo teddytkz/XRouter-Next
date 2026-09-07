@@ -16,6 +16,7 @@ export { default as Footer } from "./Footer";
 export { default as OAuthModal } from "./OAuthModal";
 export { default as ModelSelectModal } from "./ModelSelectModal";
 export { default as ManualConfigModal } from "./ManualConfigModal";
+export { default as ConfigSlider } from "./ConfigSlider";
 export { default as ComboFormModal } from "./ComboFormModal";
 export { default as McpMarketplaceModal } from "./McpMarketplaceModal";
 export { default as UsageStats } from "./UsageStats";

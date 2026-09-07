@@ -109,8 +109,15 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/mitm"))
     return {
       title: "MITM Proxy",
-      description: "Intercept CLI tool traffic and route through 9Router",
+      description: "Intercept CLI tool traffic and route through XRouter Next",
       icon: "security",
+      breadcrumbs: [],
+    };
+  if (pathname.includes("/extended"))
+    return {
+      title: "XRouter Next",
+      description: "Custom rules, prompt injectors, and dynamic agent skills",
+      icon: "auto_awesome",
       breadcrumbs: [],
     };
   if (pathname.includes("/token-saver"))
@@ -137,7 +144,7 @@ const getPageInfo = (pathname) => {
   if (pathname.includes("/skills"))
     return {
       title: "Agent Skills",
-      description: "Copy a link and paste to your AI to use 9Router — no install needed",
+      description: "Copy a link and paste to your AI to use XRouter Next — no install needed",
       icon: "extension",
       breadcrumbs: [],
     };

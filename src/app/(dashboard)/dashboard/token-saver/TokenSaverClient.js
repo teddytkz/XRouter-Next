@@ -1,7 +1,6 @@
 "use client";
-
-import { useState, useEffect, useCallback, useRef } from "react";
-import { Card, Button, Input, Modal, Toggle, ConfirmModal } from "@/shared/components";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import { Card, Button, Input, Modal, Toggle, ConfirmModal, ConfigSlider, Badge } from "@/shared/components";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import { getCurrentLocale, onLocaleChange } from "@/i18n/runtime";
 import {
@@ -37,6 +36,9 @@ export default function TokenSaverClient() {
   const [removingExtra, setRemovingExtra] = useState(null);
   const [installLog, setInstallLog] = useState("");
   const [extrasConfirm, setExtrasConfirm] = useState(null);
+  const [autoSetupLoading, setAutoSetupLoading] = useState(false);
+  const [autoDetectLoading, setAutoDetectLoading] = useState(false);
+  const [autoSetupMessage, setAutoSetupMessage] = useState("");
   const [codeAware, setCodeAware] = useState(false);
   const [kompress, setKompress] = useState(true);
   const [restartingProxy, setRestartingProxy] = useState(false);
@@ -58,7 +60,18 @@ export default function TokenSaverClient() {
   const [showPxpipeModal, setShowPxpipeModal] = useState(false);
   const [pxpipeActionLoading, setPxpipeActionLoading] = useState(false);
   const [pxpipeActionError, setPxpipeActionError] = useState("");
+  const [tokenSaverEnabled, setTokenSaverEnabled] = useState(false);
+  const [tokenSaverBudget, setTokenSaverBudget] = useState(80000);
   const [locale, setLocale] = useState("en");
+  const [settings, setSettings] = useState({});
+  const [skills, setSkills] = useState([]);
+  const [installingSkill, setInstallingSkill] = useState(null);
+  const [headroomUpdateInfo, setHeadroomUpdateInfo] = useState(null);
+  const [headroomUpdating, setHeadroomUpdating] = useState(false);
+  const [pxpipeUpdateInfo, setPxpipeUpdateInfo] = useState(null);
+  const [pxpipeUpdating, setPxpipeUpdating] = useState(false);
+  const [skillsUpdates, setSkillsUpdates] = useState({});
+  const [syncingSkill, setSyncingSkill] = useState(null);
 
   const { copied, copy } = useCopyToClipboard();
 
@@ -207,12 +220,6 @@ export default function TokenSaverClient() {
     }
   }, [refreshHeadroomStatus]);
 
-  const togglePendingExtra = (extra) => {
-    setPendingExtras((cur) =>
-      cur.includes(extra) ? cur.filter((e) => e !== extra) : [...cur, extra]
-    );
-  };
-
   // Poll the install log tail while a pip install/uninstall is running.
   const startLogPolling = useCallback(() => {
     setInstallLog("");
@@ -238,6 +245,59 @@ export default function TokenSaverClient() {
   }, []);
 
   useEffect(() => () => stopLogPolling(), [stopLogPolling]);
+
+  const handleAutoSetupHeadroom = useCallback(async () => {
+    setAutoSetupLoading(true);
+    setHeadroomActionError("");
+    setAutoSetupMessage("Installing headroom-ai[proxy] and launching proxy daemon...");
+    startLogPolling();
+    try {
+      const res = await fetch("/api/headroom/auto-setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ extras: ["code"] }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "1-Click auto setup failed");
+      if (data.url) {
+        setHeadroomUrl(data.url);
+      }
+      setHeadroomEnabled(true);
+      setAutoSetupMessage("Headroom is up and running!");
+      await refreshHeadroomStatus();
+    } catch (e) {
+      setHeadroomActionError(e.message);
+      setAutoSetupMessage("");
+    } finally {
+      stopLogPolling();
+      setAutoSetupLoading(false);
+    }
+  }, [refreshHeadroomStatus, startLogPolling, stopLogPolling]);
+
+  const handleAutoDetectPort = useCallback(async () => {
+    setAutoDetectLoading(true);
+    setHeadroomActionError("");
+    try {
+      const res = await fetch("/api/headroom/detect-port", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (data.found && data.url) {
+        setHeadroomUrl(data.url);
+        await refreshHeadroomStatus();
+      } else {
+        setHeadroomActionError("No running Headroom instance found on ports 8787-8791.");
+      }
+    } catch (e) {
+      setHeadroomActionError(e.message || "Failed to auto-detect port");
+    } finally {
+      setAutoDetectLoading(false);
+    }
+  }, [refreshHeadroomStatus]);
+
+  const togglePendingExtra = (extra) => {
+    setPendingExtras((cur) =>
+      cur.includes(extra) ? cur.filter((e) => e !== extra) : [...cur, extra]
+    );
+  };
 
   const installExtrasConfirmed = useCallback(async () => {
     if (pendingExtras.length === 0) return;
@@ -407,11 +467,15 @@ export default function TokenSaverClient() {
     patchSetting({ pxpipeMinChars: next });
   };
 
-  const handleHeadroomTimeoutBlur = () => {
-    const raw = Math.round(Number(headroomTimeoutMs));
-    const next = Number.isFinite(raw) && raw > 0 ? raw : 3000;
-    setHeadroomTimeoutMs(next);
-    patchSetting({ headroomTimeoutMs: next });
+  const handleTokenSaverToggle = (value) => {
+    setTokenSaverEnabled(value);
+    patchSetting({ tokenSaverEnabled: value });
+  };
+
+  const handleTokenSaverBudgetBlur = () => {
+    const next = Math.max(1000, Number(tokenSaverBudget) || 80000);
+    setTokenSaverBudget(next);
+    patchSetting({ tokenSaverBudget: next });
   };
 
   useEffect(() => {
@@ -432,14 +496,256 @@ export default function TokenSaverClient() {
           setPonytailLevel(data.ponytailLevel || "full");
           setPxpipeEnabled(!!data.pxpipeEnabled);
           if (typeof data.pxpipeMinChars === "number") setPxpipeMinChars(data.pxpipeMinChars);
+          setTokenSaverEnabled(!!data.tokenSaverEnabled);
+          if (typeof data.tokenSaverBudget === "number") setTokenSaverBudget(data.tokenSaverBudget);
+          setSettings(data);
           refreshHeadroomStatus();
-          // PRD: run the PXPIPE health check automatically when the page opens
           refreshPxpipeStatus().then(runPxpipeHealth);
         }
       } catch {}
     };
+
+    const loadSkills = async () => {
+      try {
+        const res = await fetch("/api/skills");
+        if (res.ok) {
+          const data = await res.json();
+          setSkills(data);
+
+          // Check updates for prompt/rule skills on Token Saver page
+          const list = ["caveman", "ponytail", "rtk", "watermarks-remover"];
+          for (const id of list) {
+            fetch(`/api/plugins/update-check?plugin=${encodeURIComponent(id)}`, { credentials: "include" })
+              .then((r) => r.ok ? r.json() : null)
+              .then((up) => {
+                if (up) setSkillsUpdates((prev) => ({ ...prev, [id]: up }));
+              })
+              .catch(() => {});
+          }
+        }
+      } catch {}
+    };
+
     loadSettings();
+    loadSkills();
+    checkHeadroomUpdate();
+    checkPxpipeUpdate();
   }, [refreshHeadroomStatus, refreshPxpipeStatus, runPxpipeHealth]);
+
+  const checkHeadroomUpdate = async () => {
+    try {
+      const res = await fetch("/api/plugins/update-check?plugin=headroom", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setHeadroomUpdateInfo(data);
+      }
+    } catch {}
+  };
+
+  const handleHeadroomUpdate = async () => {
+    if (!headroomStatus.installed || headroomUpdating) return;
+    setHeadroomUpdating(true);
+    try {
+      const res = await fetch("/api/headroom/update", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await refreshHeadroomStatus();
+        await checkHeadroomUpdate();
+      } else {
+        alert(data.error || "Headroom update failed");
+      }
+    } catch (e) {
+      alert("Headroom update error: " + e.message);
+    } finally {
+      setHeadroomUpdating(false);
+    }
+  };
+
+  const checkPxpipeUpdate = async () => {
+    try {
+      const res = await fetch("/api/plugins/update-check?plugin=pxpipe", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setPxpipeUpdateInfo(data);
+      }
+    } catch {}
+  };
+
+  const handleSyncPromptSkill = async (skillId) => {
+    setSyncingSkill(skillId);
+    try {
+      const res = await fetch("/api/skills/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: skillId, action: "update" }),
+      });
+      if (res.ok) {
+        const upRes = await fetch(`/api/plugins/update-check?plugin=${encodeURIComponent(skillId)}`, { credentials: "include" });
+        if (upRes.ok) {
+          const up = await upRes.json();
+          setSkillsUpdates((prev) => ({ ...prev, [skillId]: up }));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to sync skill:", e);
+    } finally {
+      setSyncingSkill(null);
+    }
+  };
+
+  const handlePxpipeUpdate = async () => {
+    if (!pxpipeStatus.installed || pxpipeUpdating) return;
+    setPxpipeUpdating(true);
+    try {
+      const res = await fetch("/api/pxpipe/update", { method: "POST" });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        await refreshPxpipeStatus();
+        await checkPxpipeUpdate();
+      } else {
+        alert(data.error || "PXPIPE update failed");
+      }
+    } catch (e) {
+      alert("PXPIPE update error: " + e.message);
+    } finally {
+      setPxpipeUpdating(false);
+    }
+  };
+
+  const handleSkillToggle = (skill, value) => {
+    const key = skill.legacy_enabled_key || `${skill.id}Enabled`;
+    setSettings(prev => ({ ...prev, [key]: value }));
+    patchSetting({ [key]: value });
+    if (skill.id === "rtk") handleRtkEnabled(value);
+    if (skill.id === "headroom") handleHeadroomEnabled(value);
+    if (skill.id === "caveman") handleCavemanEnabled(value);
+    if (skill.id === "ponytail") handlePonytailEnabled(value);
+  };
+
+  const handleSkillConfig = (skill, configKey, value) => {
+    const key =
+      configKey === "routing_mode"
+        ? `${skill.id}RoutingMode`
+        : configKey;
+    setSettings(prev => ({ ...prev, [key]: value }));
+    patchSetting({ [key]: value });
+    if (skill.id === "caveman" && configKey === "cavemanLevel") handleCavemanLevel(value);
+    if (skill.id === "ponytail" && configKey === "ponytailLevel") handlePonytailLevel(value);
+  };
+
+  const handleInstallSkill = async (skill) => {
+    setInstallingSkill(skill.id);
+    const key = skill.legacy_enabled_key || `${skill.id}Enabled`;
+    const isInstalled = settings[key];
+    const action = isInstalled ? "uninstall" : "install";
+    
+    try {
+      const res = await fetch("/api/skills/install", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: skill.id, action })
+      });
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, [key]: !isInstalled }));
+        patchSetting({ [key]: !isInstalled });
+      } else {
+        const data = await res.json();
+        alert(`Failed to ${action} ${skill.name}: ${data.error || "Unknown error"}`);
+      }
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+    }
+    setInstallingSkill(null);
+  };
+
+  const DEFAULT_TOKEN_SAVER_SKILLS = [
+    {
+      id: "rtk",
+      name: "RTK",
+      description: "Compress tool output (git/grep/ls/tree/logs → 60-90% fewer input tokens)",
+      source: "https://github.com/rtk-ai/rtk",
+      version: "0.46.0",
+      default_enabled: true,
+      legacy_enabled_key: "rtkEnabled",
+    },
+    {
+      id: "headroom",
+      name: "Headroom",
+      description: "Compress context via external /v1/compress proxy before routing to the model",
+      source: "https://github.com/chopratejas/headroom",
+      version: "0.1.0",
+      default_enabled: false,
+      legacy_enabled_key: "headroomEnabled",
+      config_schema: [
+        {
+          key: "endpoint",
+          label: "Proxy URL",
+          type: "string",
+          default: "http://localhost:8787",
+          legacy_key: "headroomUrl",
+        },
+      ],
+    },
+    {
+      id: "caveman",
+      name: "Caveman",
+      description: "Terse-style system prompt → ~65% fewer output tokens (up to 87%)",
+      source: "https://github.com/caveman-ai/caveman",
+      version: "2.4.0",
+      default_enabled: false,
+      legacy_enabled_key: "cavemanEnabled",
+      config_schema: [
+        {
+          key: "cavemanLevel",
+          type: "enum",
+          default: "full",
+          legacy_key: "cavemanLevel",
+          options: [
+            { id: "lite", label: "Lite", desc: "Brief, concise answers" },
+            { id: "full", label: "Full", desc: "Short sentences, minimal filler" },
+            { id: "ultra", label: "Ultra", desc: "Telegraphic, max compression" },
+          ],
+        },
+      ],
+    },
+    {
+      id: "ponytail",
+      name: "Ponytail",
+      description: "Bias the model toward minimal code: YAGNI, reuse stdlib, deletion over addition",
+      source: "https://github.com/ponytail-ai/ponytail",
+      version: "4.9.0",
+      default_enabled: false,
+      legacy_enabled_key: "ponytailEnabled",
+      config_schema: [
+        {
+          key: "ponytailLevel",
+          type: "enum",
+          default: "full",
+          legacy_key: "ponytailLevel",
+          options: [
+            { id: "lite", label: "Lite", desc: "YAGNI nudges" },
+            { id: "full", label: "Full", desc: "Minimal code bias" },
+            { id: "ultra", label: "Ultra", desc: "YAGNI extremist, deletion first" },
+          ],
+        },
+      ],
+    },
+    {
+      id: "watermarks-remover",
+      name: "Watermarks Remover",
+      description: "Strip AI provenance marks (invisible Unicode, C2PA) and AI transition clichés from outputs.",
+      source: "https://github.com/9router/watermarks-remover",
+      version: "0.6.0",
+      default_enabled: false,
+      legacy_enabled_key: "watermarksRemoverEnabled",
+    },
+  ];
+
+  const tokenSaverIds = ["rtk", "headroom", "caveman", "ponytail", "watermarks-remover"];
+  const requestPipelineSkills = DEFAULT_TOKEN_SAVER_SKILLS.map((def) => {
+    const fromApi = skills.find((s) => s.id === def.id);
+    return fromApi ? { ...def, ...fromApi } : def;
+  });
 
   const headroomRunning = !!headroomStatus.running;
   const headroomStatusLabel = headroomStatus.loading
@@ -478,314 +784,223 @@ export default function TokenSaverClient() {
       <Card id="rtk">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-lg font-semibold flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary">
-              bolt
-            </span>
+            <span className="material-symbols-outlined text-primary">bolt</span>
             Token Saver
           </h2>
         </div>
-        <div className="flex items-center justify-between pt-2 pb-4 border-b border-border gap-4">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress tool output{" "}
-              <a
-                href="https://github.com/rtk-ai/rtk"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (RTK)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              git/grep/ls/tree/logs → 60-90% fewer input tokens
-            </p>
-          </div>
-          <Toggle
-            checked={rtkEnabled}
-            onChange={() => handleRtkEnabled(!rtkEnabled)}
-          />
-        </div>
-        <div className="flex items-center justify-between py-4 gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-3 flex-wrap">
-              <p className="font-medium">
-                Compress context{" "}
-                <a
-                  href="https://github.com/chopratejas/headroom"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-normal text-primary underline hover:opacity-80"
-                >
-                  (Headroom)
-                </a>
-              </p>
-              <span
-                className={`text-xs px-2 py-0.5 rounded ${headroomRunning ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}
-              >
-                {headroomStatusLabel}
-              </span>
-              <button
-                type="button"
-                onClick={() => setShowHeadroomInstallModal(true)}
-                className="text-xs text-primary underline hover:opacity-80"
-              >
-                {headroomRunning ? "Manage" : "Setup"}
-              </button>
-            </div>
-            <p className="text-sm text-text-muted mt-1">
-              Compress prompts via /v1/compress before routing to the model
-            </p>
-          </div>
-          <Toggle
-            checked={headroomEnabled}
-            onChange={() => handleHeadroomEnabled(!headroomEnabled)}
-          />
-        </div>
-        {headroomStatus.installed && (
-          <div className="mb-3 ml-1 pl-3 pb-4 border-l-2 border-border">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-xs text-text-muted">
-                Compression extras
-                {headroomExtras.version ? ` · v${headroomExtras.version}` : ""}:
-              </span>
-              {headroomExtras.available.map((extra) => {
-                const installed = !!headroomExtras.extras[extra];
-                const pending = pendingExtras.includes(extra);
-                const extraTitle =
-                  extra === "code"
-                    ? "tree-sitter AST compression for code responses"
-                    : "Kompress-v2 HF model for prose/agentic traces (~+1GB)";
+        
+        {requestPipelineSkills.map((skill, index) => {
+          const enabled = settings[skill.legacy_enabled_key || `${skill.id}Enabled`];
+          const isEnabled = skill.id === "rtk" ? rtkEnabled : 
+                            skill.id === "headroom" ? headroomEnabled :
+                            skill.id === "caveman" ? cavemanEnabled :
+                            skill.id === "ponytail" ? ponytailEnabled : 
+                            (enabled !== undefined ? !!enabled : !!skill.default_enabled);
+                            
+          return (
+            <React.Fragment key={skill.id}>
+              <div className={`flex items-center justify-between py-4 gap-4 flex-wrap ${index > 0 ? "border-t border-border mt-4" : ""}`}>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <p className="font-medium">
+                      {skill.name}{" "}
+                      <a href={skill.source} target="_blank" rel="noreferrer" className="text-xs font-normal text-primary underline hover:opacity-80">(Source)</a>
+                    </p>
+                    {(() => {
+                      if (skill.id === "headroom") {
+                        const ver = headroomUpdateInfo?.currentVersion || headroomExtras?.version || skill.version;
+                        return ver ? (
+                          <Badge variant="success" size="sm">
+                            v{ver.replace(/^v/, "")}
+                          </Badge>
+                        ) : null;
+                      }
+                      const up = skillsUpdates[skill.id];
+                      const currentVer = up?.currentVersion || skill.version;
+                      const hasUpdate = up?.hasUpdate;
+                      const latestVer = up?.latestVersion;
 
-                if (installed) {
-                  const active = extra === "code" ? codeAware : kompress;
-                  return (
-                    <div
-                      key={extra}
-                      className="flex items-center gap-1.5 text-xs px-2 py-1 rounded border border-success/40 bg-success/5 text-text"
-                      title={extraTitle}
-                    >
-                      <Toggle
-                        size="sm"
-                        checked={active}
-                        disabled={restartingProxy}
-                        onChange={() => toggleExtraActive(extra, !active)}
-                      />
-                      <span className="font-medium">[{extra}]</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveExtra(extra)}
-                        disabled={removingExtra === extra}
-                        className="ml-1 text-error underline hover:opacity-80 disabled:opacity-50"
-                        title={`Uninstall [${extra}]`}
-                      >
-                        {removingExtra === extra ? "Uninstalling…" : "Uninstall"}
-                      </button>
+                      if (!currentVer) return null;
+                      return (
+                        <div className="flex items-center gap-2">
+                          <Badge variant="success" size="sm">
+                            v{currentVer.replace(/^v/, "")}
+                          </Badge>
+                          {hasUpdate && (
+                            <div className="flex items-center gap-1.5">
+                              <Badge variant="warning" size="sm" className="animate-pulse">
+                                v{latestVer} available
+                              </Badge>
+                              <button
+                                type="button"
+                                onClick={() => handleSyncPromptSkill(skill.id)}
+                                disabled={syncingSkill === skill.id}
+                                className="px-2 py-0.5 rounded text-xs font-semibold bg-amber-500 text-black hover:bg-amber-400 disabled:opacity-50 transition-colors"
+                              >
+                                {syncingSkill === skill.id ? "Syncing…" : "Sync"}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {skill.id === "headroom" && (
+                      <>
+                        <span className={`text-xs px-2 py-0.5 rounded font-medium ${headroomRunning ? "bg-success/15 text-success" : "bg-warning/15 text-warning"}`}>
+                          {headroomStatusLabel}
+                        </span>
+                        {headroomStatus.installed && headroomUpdateInfo?.updateAvailable && (
+                          <div className="flex items-center gap-1.5">
+                            <Badge variant="warning" size="sm" className="animate-pulse">
+                              Update: v{headroomUpdateInfo.latestVersion}
+                            </Badge>
+                            <button
+                              type="button"
+                              onClick={handleHeadroomUpdate}
+                              disabled={headroomUpdating}
+                              className="px-2 py-0.5 rounded text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                            >
+                              {headroomUpdating ? "Updating…" : "Update"}
+                            </button>
+                          </div>
+                        )}
+                        {!headroomRunning && headroomStatus.python && !headroomStatus.installed && (
+                          <button
+                            type="button"
+                            onClick={handleAutoSetupHeadroom}
+                            disabled={autoSetupLoading}
+                            className="px-2 py-0.5 rounded text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                          >
+                            {autoSetupLoading ? "Setting up…" : "⚡ 1-Click Auto Setup"}
+                          </button>
+                        )}
+                        {!headroomRunning && headroomStatus.installed && (
+                          <button
+                            type="button"
+                            onClick={handleHeadroomStart}
+                            disabled={headroomActionLoading}
+                            className="px-2 py-0.5 rounded text-xs font-medium border border-border hover:bg-surface-2 disabled:opacity-50 transition-colors"
+                          >
+                            {headroomActionLoading ? "Starting…" : "Start"}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => setShowHeadroomInstallModal(true)} className="text-xs text-primary underline hover:opacity-80">
+                          {headroomRunning ? "Manage" : "Setup"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <p className="text-sm text-text-muted mt-1">{skill.description}</p>
+                </div>
+                
+                <div className="flex items-center gap-3 shrink-0">
+                  {isEnabled && skill.config_schema && (
+                    <div className="flex flex-col items-end gap-1">
+                      {skill.config_schema.map(cfg => {
+                        const settingKey =
+                          cfg.key === "routing_mode"
+                            ? `${skill.id}RoutingMode`
+                            : cfg.legacy_key || cfg.key;
+                        const val = settings[settingKey] ?? settings[cfg.legacy_key || cfg.key] ?? cfg.default;
+                        if (cfg.type === "enum") {
+                          const activeLevel = skill.id === "caveman" && cfg.key !== "routing_mode" ? cavemanLevel : skill.id === "ponytail" && cfg.key !== "routing_mode" ? ponytailLevel : val;
+                          const options = skill.id === "caveman" && cfg.key !== "routing_mode" ? visibleCavemanLevels : cfg.options;
+                          return (
+                            <div key={cfg.key} className="flex flex-col items-end gap-1">
+                              <div className="flex items-center gap-1.5">
+                                {options.map(opt => (
+                                  <button key={opt.id || opt.value} onClick={() => handleSkillConfig(skill, cfg.legacy_key || cfg.key, opt.id || opt.value)} className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${activeLevel === (opt.id || opt.value) ? "bg-primary text-white border-primary" : "bg-transparent border-border text-text-muted hover:bg-surface-2"}`} title={opt.desc}>
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="text-xs text-primary">{options.find(o => (o.id || o.value) === activeLevel)?.desc}</p>
+                            </div>
+                          );
+                        }
+                        if (cfg.type === "slider") {
+                          return (
+                            <ConfigSlider
+                              key={cfg.key}
+                              label={cfg.label}
+                              configKey={cfg.key}
+                              value={val}
+                              min={cfg.min ?? 1}
+                              max={cfg.max ?? 10}
+                              onChange={(newVal) =>
+                                handleSkillConfig(skill, cfg.legacy_key || cfg.key, newVal)
+                              }
+                            />
+                          );
+                        }
+                        return null;
+                      })}
                     </div>
-                  );
-                }
-
-                return (
-                  <label
-                    key={extra}
-                    className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded border cursor-pointer transition-colors ${
-                      pending
-                        ? "border-primary bg-primary/10 text-primary"
-                        : "border-border text-text-muted hover:bg-surface-2"
-                    }`}
-                    title={extraTitle}
-                  >
-                    <input
-                      type="checkbox"
-                      className="w-3 h-3"
-                      checked={pending}
-                      onChange={() => togglePendingExtra(extra)}
-                    />
-                    <span className="font-medium">[{extra}]</span>
-                    <span className="opacity-70">not installed</span>
-                  </label>
-                );
-              })}
-              {pendingExtras.length > 0 && (
-                <button
-                  onClick={handleInstallExtras}
-                  disabled={extrasActionLoading}
-                  className="text-xs px-2.5 py-1 rounded bg-primary text-white hover:opacity-90 disabled:opacity-50"
-                >
-                  {extrasActionLoading
-                    ? "Installing…"
-                    : `Install [proxy,${pendingExtras.join(",")}]`}
-                </button>
+                  )}
+                  <Toggle checked={isEnabled} onChange={() => handleSkillToggle(skill, !isEnabled)} />
+                </div>
+              </div>
+              
+              {skill.id === "headroom" && headroomStatus.installed && (
+                 <div className="mb-3 ml-1 pl-3 pb-4 border-l-2 border-border">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <p className="text-sm">Pass IDE context files to proxy</p>
+                    <Toggle checked={codeAware} onChange={() => toggleExtraActive("code", !codeAware)} />
+                  </div>
+                  <div className="flex items-center justify-between flex-wrap gap-2 mt-4">
+                    <p className="text-sm">Compress user messages</p>
+                    <Toggle checked={kompress} onChange={() => toggleExtraActive("ml", !kompress)} />
+                  </div>
+                </div>
               )}
-            </div>
-            {extrasActionError && (
-              <p className="text-xs text-error mt-1">{extrasActionError}</p>
-            )}
-            {restartingProxy && (
-              <p className="text-xs text-text-muted mt-1">Restarting proxy…</p>
-            )}
-            {(extrasActionLoading || removingExtra) && installLog && (
-              <pre className="mt-2 max-h-32 overflow-auto rounded bg-surface-2 p-2 text-[10px] leading-tight text-text-muted whitespace-pre-wrap">
-                {installLog}
-              </pre>
-            )}
-            <p className="text-xs text-text-muted mt-1">
-              Installing adds the package; use <code>on</code>/<code>off</code>{" "}
-              to activate it (restarts the proxy). Default install is{" "}
-              <code>[proxy]</code> only (SmartCrusher for JSON). Adding{" "}
-              <code>[code]</code> enables AST compression
-              (Python/JS/TS/Go/Rust/Java/C/C++/Perl). Adding <code>[ml]</code>{" "}
-              enables the Kompress-v2 HF model for prose/agentic traces but
-              adds ~1 GB (torch + huggingface-hub).
-            </p>
-          </div>
-        )}
-        <div className="flex items-center justify-between pt-4 border-t border-border gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Compress LLM output{" "}
-              <a
-                href="https://github.com/JuliusBrussee/caveman"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Caveman)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Terse-style system prompt → ~65% fewer output tokens (up to 87%)
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {cavemanEnabled && (
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  {visibleCavemanLevels.map((lvl) => (
-                    <button
-                      key={lvl.id}
-                      onClick={() => handleCavemanLevel(lvl.id)}
-                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        cavemanLevel === lvl.id
-                          ? "bg-primary text-white border-primary"
-                          : "bg-transparent border-border text-text-muted hover:bg-surface-2"
-                      }`}
-                      title={lvl.desc}
-                    >
-                      {lvl.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-primary">
-                  {
-                    CAVEMAN_LEVELS.find((lvl) => lvl.id === cavemanLevel)
-                      ?.desc
-                  }
-                </p>
-              </div>
-            )}
-            <Toggle
-              checked={cavemanEnabled}
-              onChange={() => handleCavemanEnabled(!cavemanEnabled)}
-            />
-          </div>
-        </div>
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-border gap-4 flex-wrap">
-          <div className="min-w-0 flex-1">
-            <p className="font-medium">
-              Lazy senior dev{" "}
-              <a
-                href="https://github.com/DietrichGebert/ponytail"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-normal text-primary underline hover:opacity-80"
-              >
-                (Ponytail)
-              </a>
-            </p>
-            <p className="text-sm text-text-muted">
-              Bias the model toward minimal code: YAGNI, reuse stdlib,
-              deletion over addition
-            </p>
-          </div>
-          <div className="flex items-center gap-3 shrink-0">
-            {ponytailEnabled && (
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-1.5">
-                  {PONYTAIL_LEVELS.map((lvl) => (
-                    <button
-                      key={lvl.id}
-                      onClick={() => handlePonytailLevel(lvl.id)}
-                      className={`px-3 py-1.5 rounded text-xs font-medium border transition-colors ${
-                        ponytailLevel === lvl.id
-                          ? "bg-primary text-white border-primary"
-                          : "bg-transparent border-border text-text-muted hover:bg-surface-2"
-                      }`}
-                      title={lvl.desc}
-                    >
-                      {lvl.label}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-xs text-primary">
-                  {
-                    PONYTAIL_LEVELS.find((lvl) => lvl.id === ponytailLevel)
-                      ?.desc
-                  }
-                </p>
-              </div>
-            )}
-            <Toggle
-              checked={ponytailEnabled}
-              onChange={() => handlePonytailEnabled(!ponytailEnabled)}
-            />
-          </div>
-        </div>
-        {/* PXPIPE hidden from UI — experimental, not exposed to users yet */}
-        {false && (
-        <div className="flex items-center justify-between pt-4 mt-4 border-t border-border gap-4 flex-wrap">
+            </React.Fragment>
+          );
+        })}
+      </Card>
+
+      {/* Context Window Trimmer & Prompt Dedup */}
+      <Card id="trimmer">
+        <div className="flex items-center justify-between py-2">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <p className="font-medium">
-                Compress prompts as images{" "}
-                <a
-                  href="https://github.com/teamchong/pxpipe"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-xs font-normal text-primary underline hover:opacity-80"
-                >
-                  (PXPIPE)
-                </a>
-              </p>
-              <span className={`text-xs px-2 py-0.5 rounded ${pxpipeChipClass}`}>
-                {pxpipeStatusLabel}
+              <h2 className="text-base font-semibold flex items-center gap-2">
+                <span className="material-symbols-outlined text-primary">content_cut</span>
+                Sliding-Window Context Trimmer & Prompt Deduplication
+              </h2>
+              <span className={`text-xs px-2 py-0.5 rounded font-medium ${tokenSaverEnabled ? "bg-success/15 text-success" : "bg-surface-3 text-text-muted"}`}>
+                {tokenSaverEnabled ? "Active" : "Disabled"}
               </span>
-              <button
-                type="button"
-                onClick={() => setShowPxpipeModal(true)}
-                className="text-xs text-primary underline hover:opacity-80"
-              >
-                {pxpipeStatus.installed ? "Manage" : "Setup"}
-              </button>
-              <a
-                href="/dashboard/pxpipe"
-                className="text-xs text-primary underline hover:opacity-80"
-              >
-                Dashboard
-              </a>
             </div>
             <p className="text-sm text-text-muted mt-1">
-              Transforms large textual context into optimized images before
-              sending to the LLM. Ideal for huge prompts, tool outputs and long
-              conversations.
+              Safely evicts older conversation turns when context nears provider limits. Strictly preserves initial system prompt, recent 3 turns, and atomic tool call/result pairs.
             </p>
           </div>
-          <Toggle
-            checked={pxpipeEnabled}
-            disabled={!pxpipeStatus.installed}
-            onChange={() => handlePxpipeEnabled(!pxpipeEnabled)}
-          />
+          <div className="flex items-center gap-3 shrink-0">
+            <Toggle checked={tokenSaverEnabled} onChange={() => handleTokenSaverToggle(!tokenSaverEnabled)} />
+          </div>
         </div>
+
+        {tokenSaverEnabled && (
+          <div className="mt-4 pt-4 border-t border-border flex flex-col gap-4">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <p className="text-sm font-medium">Token Budget Threshold</p>
+                <p className="text-xs text-text-muted">Target maximum input tokens before sliding-window pruning initiates.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  value={tokenSaverBudget}
+                  onChange={(e) => setTokenSaverBudget(e.target.value)}
+                  onBlur={handleTokenSaverBudgetBlur}
+                  className="w-32 text-right font-mono text-sm"
+                  min={1000}
+                  step={1000}
+                />
+                <span className="text-xs text-text-muted">tokens</span>
+              </div>
+            </div>
+          </div>
         )}
       </Card>
 
@@ -813,8 +1028,20 @@ export default function TokenSaverClient() {
               Open Headroom Dashboard
             </a>
           )}
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium">Proxy URL</p>
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-medium">Proxy URL</p>
+              <button
+                type="button"
+                onClick={handleAutoDetectPort}
+                disabled={autoDetectLoading}
+                className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                title="Scan ports 8787-8791 for active Headroom instance"
+              >
+                <span className="material-symbols-outlined text-[14px]">radar</span>
+                {autoDetectLoading ? "Scanning…" : "Auto-Detect Port"}
+              </button>
+            </div>
             <Input
               value={headroomUrl}
               onChange={(e) => setHeadroomUrl(e.target.value)}
@@ -827,19 +1054,16 @@ export default function TokenSaverClient() {
               like http://headroom:8787.
             </p>
           </div>
-          <div className="flex flex-col gap-1">
-            <p className="text-sm font-medium">Timeout (ms)</p>
-            <Input
-              value={String(headroomTimeoutMs)}
-              onChange={(e) => setHeadroomTimeoutMs(e.target.value)}
-              onBlur={handleHeadroomTimeoutBlur}
-              placeholder="3000"
-              className="font-mono text-sm"
-            />
-            <p className="text-xs text-text-muted">
-              Request timeout in milliseconds. Defaults to 3000 ms.
-            </p>
-          </div>
+
+          {headroomStatus.python && (
+            <div className="flex items-center justify-between text-xs px-3 py-2 rounded bg-surface-2 border border-border">
+              <span className="text-text-muted">Python Environment:</span>
+              <span className="font-mono text-text truncate max-w-[240px]" title={headroomStatus.python}>
+                Python {headroomStatus.pythonVersion || "≥ 3.10"} ✓
+              </span>
+            </div>
+          )}
+
           {headroomManaged ? (
             <Button
               onClick={handleHeadroomStop}
@@ -850,8 +1074,9 @@ export default function TokenSaverClient() {
               {headroomActionLoading ? "Stopping…" : "Stop Headroom"}
             </Button>
           ) : headroomRunning ? (
-            <p className="text-sm text-success">
-              Headroom proxy is reachable. You can enable the token saver.
+            <p className="text-sm text-success font-medium flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-sm">check_circle</span>
+              Headroom proxy is reachable and active.
             </p>
           ) : headroomCanStart ? (
             <Button
@@ -871,8 +1096,18 @@ export default function TokenSaverClient() {
               first, or use an external proxy URL.
             </p>
           ) : (
-            <div className="flex flex-col gap-1">
-              <p className="text-sm font-medium">Install then click Start:</p>
+            <div className="flex flex-col gap-3">
+              <Button
+                onClick={handleAutoSetupHeadroom}
+                fullWidth
+                disabled={autoSetupLoading}
+                className="font-semibold py-2.5"
+              >
+                {autoSetupLoading ? "Setting up Headroom…" : "⚡ 1-Click Auto Install & Start (Recommended)"}
+              </Button>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-text-muted">Or install manually via terminal:</span>
+              </div>
               <div className="flex items-center gap-2">
                 <pre className="flex-1 rounded bg-black/5 dark:bg-white/5 p-2 text-xs font-mono overflow-x-auto">
                   {`pip install "headroom-ai[proxy]"`}
@@ -887,6 +1122,15 @@ export default function TokenSaverClient() {
                   {copied ? "Copied" : "Copy"}
                 </Button>
               </div>
+            </div>
+          )}
+
+          {(autoSetupLoading || installLog) && (
+            <div className="flex flex-col gap-1 mt-1">
+              <p className="text-xs font-medium text-text-muted">Install Progress Log:</p>
+              <pre className="p-2 rounded bg-black/10 dark:bg-black/40 text-[11px] font-mono max-h-32 overflow-y-auto whitespace-pre-wrap">
+                {installLog || autoSetupMessage || "Running pip install..."}
+              </pre>
             </div>
           )}
           {headroomActionError && (
@@ -922,10 +1166,27 @@ export default function TokenSaverClient() {
           </p>
           <div className="flex items-center justify-between text-sm">
             <span>Status</span>
-            <span className={pxpipeHealthy || pxpipeStatus.running ? "text-success" : "text-warning"}>
-              {pxpipeStatusLabel}
-              {pxpipeStatus.version ? ` · v${pxpipeStatus.version}` : ""}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className={pxpipeHealthy || pxpipeStatus.running ? "text-success" : "text-warning"}>
+                {pxpipeStatusLabel}
+                {pxpipeStatus.version ? ` · v${pxpipeStatus.version}` : ""}
+              </span>
+              {pxpipeStatus.installed && pxpipeUpdateInfo?.updateAvailable && (
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20 font-mono font-medium">
+                    Update: v{pxpipeUpdateInfo.latestVersion}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handlePxpipeUpdate}
+                    disabled={pxpipeUpdating}
+                    className="px-2 py-0.5 rounded text-xs font-semibold bg-primary text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                  >
+                    {pxpipeUpdating ? "Updating…" : "Update"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
           {pxpipeHealth?.checks?.length > 0 && (
             <div className="flex flex-col gap-1 rounded border border-border p-3">

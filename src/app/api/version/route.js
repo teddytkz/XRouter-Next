@@ -1,61 +1,47 @@
-import https from "https";
 import pkg from "../../../../package.json" with { type: "json" };
+import { checkForUpdate, fetchGitHubExtendedLatest, clearPluginUpdateCache } from "@/lib/updateCheck.js";
+import { UPDATER_CONFIG } from "@/shared/constants/config.js";
 
-const NPM_PACKAGE_NAME = "9router";
-const VERSION_CACHE_TTL_MS = 3600000; // cache npm latest lookup for 1h
+const EXTENDED_REPO = UPDATER_CONFIG.githubRepo || "thunderkex/9router-extended";
 
-// Survive hot reload; one cache per process
-const versionCache = (global.__npmVersionCache ??= { value: null, fetchedAt: 0 });
+export async function GET(request) {
+  const { searchParams } = new URL(request.url);
+  const force = searchParams.get("force") === "true" || searchParams.get("force") === "1";
+  if (force) {
+    clearPluginUpdateCache("9router-extended");
+  }
 
-// Fetch latest version from npm registry
-function fetchLatestVersion() {
-  return new Promise((resolve) => {
-    const req = https.get(
-      `https://registry.npmjs.org/${NPM_PACKAGE_NAME}/latest`,
-      { timeout: 4000 },
-      (res) => {
-        let data = "";
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          try {
-            resolve(JSON.parse(data).version || null);
-          } catch {
-            resolve(null);
-          }
-        });
-      }
-    );
-    req.on("error", () => resolve(null));
-    req.on("timeout", () => { req.destroy(); resolve(null); });
+  const currentVersion = pkg.version;
+  const isBun = typeof process !== "undefined" && Boolean(process.versions?.bun);
+  const tarballUrl = UPDATER_CONFIG.tarballUrl;
+
+  const packageManagers = {
+    bun: `bun add -g ${tarballUrl}`,
+    npm: `npm i -g ${tarballUrl} --force`,
+    pnpm: `pnpm add -g ${tarballUrl}`,
+    yarn: `yarn global add ${tarballUrl}`,
+  };
+
+  const defaultPkgManager = isBun ? "bun" : "npm";
+  const updateCmd = packageManagers[defaultPkgManager];
+
+  const result = await checkForUpdate(
+    "9router-extended",
+    currentVersion,
+    () => fetchGitHubExtendedLatest(EXTENDED_REPO),
+    force ? 0 : 3600000
+  );
+
+  return Response.json({
+    ...result,
+    isExtended: true,
+    repo: EXTENDED_REPO,
+    updateCmd,
+    packageManagers,
+    defaultPkgManager,
+    detectedRuntime: isBun ? "bun" : "node",
+    tarballUrl,
   });
 }
 
-function compareVersions(a, b) {
-  const pa = a.split(".").map(Number);
-  const pb = b.split(".").map(Number);
-  for (let i = 0; i < 3; i++) {
-    if (pa[i] > pb[i]) return 1;
-    if (pa[i] < pb[i]) return -1;
-  }
-  return 0;
-}
 
-async function getLatestVersionCached() {
-  if (versionCache.value && Date.now() - versionCache.fetchedAt < VERSION_CACHE_TTL_MS) {
-    return versionCache.value;
-  }
-  const latest = await fetchLatestVersion();
-  if (latest) {
-    versionCache.value = latest;
-    versionCache.fetchedAt = Date.now();
-  }
-  return latest;
-}
-
-export async function GET() {
-  const latestVersion = await getLatestVersionCached();
-  const currentVersion = pkg.version;
-  const hasUpdate = latestVersion ? compareVersions(latestVersion, currentVersion) > 0 : false;
-
-  return Response.json({ currentVersion, latestVersion, hasUpdate });
-}

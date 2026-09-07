@@ -74,7 +74,7 @@ async function startTerminalUI(port) {
 
   // Main menu
   await showMenuWithBack({
-    title: "📡 9Router Terminal UI",
+    title: "📡 XRouter Next Terminal UI",
     breadcrumb: basePath,
     headerContent: () => getHeader(port),
     items: [
