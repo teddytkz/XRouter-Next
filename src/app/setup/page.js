@@ -69,11 +69,11 @@ export default function SetupPage() {
   return (
     <div style={styles.root}>
       <div style={styles.card}>
-        <div style={styles.logo}>9Router</div>
+        <div style={styles.logo}>XRouter Next</div>
 
         {step === "welcome" && (
           <>
-            <h1 style={styles.h1}>Welcome to 9Router</h1>
+            <h1 style={styles.h1}>Welcome to XRouter Next</h1>
             <p style={styles.sub}>No providers connected yet. Add one to start routing AI requests.</p>
             <button style={styles.btn} onClick={() => setStep("pick")}>Get started →</button>
           </>
