@@ -92,4 +92,4 @@ graphify-out/*
 
 migration-docs/
 
-.tgz
+*.tgz
