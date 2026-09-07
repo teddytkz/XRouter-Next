@@ -55,7 +55,12 @@ function UsageContent() {
               // ponytail: totalRequests shows cumulative since server start (rolling window counter), not live concurrent requests
               const totalReq = providers.reduce((sum, p) => sum + (p.successCount || 0) + (p.failCount || 0), 0);
 
-              setLiveStats((prev) => ({ ...prev, totalRequests: totalReq, avgLatency: avgLat }));
+              setLiveStats((prev) => ({
+                ...prev,
+                totalRequests: totalReq,
+                avgLatency: avgLat,
+                activeProviders: Number.isFinite(data.activeProviders) ? data.activeProviders : prev.activeProviders,
+              }));
             }
           } catch (err) {
             console.warn("Failed to parse live stats:", err);
@@ -72,31 +77,6 @@ function UsageContent() {
       if (eventSource) eventSource.close();
     };
   }, []);
-
-  // Live active providers = distinct providers currently handling an in-flight request.
-  // ponytail: 5s polling. Lower the interval (or hook into statsEmitter) when sub-second freshness is needed.
-  useEffect(() => {
-    let cancelled = false;
-    let timer;
-
-    const load = async () => {
-      try {
-        const res = await fetch(`/api/usage/active-providers?period=${encodeURIComponent(period)}`, { cache: "no-store" });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (!cancelled && Number.isFinite(data?.activeProviders)) {
-          setLiveStats((prev) => ({ ...prev, activeProviders: data.activeProviders }));
-        }
-      } catch (err) {
-        console.warn("Failed to load active providers:", err);
-      } finally {
-        if (!cancelled) timer = setTimeout(load, 5000);
-      }
-    };
-
-    load();
-    return () => { cancelled = true; if (timer) clearTimeout(timer); };
-  }, [period]);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)

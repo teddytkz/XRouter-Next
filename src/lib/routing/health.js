@@ -19,6 +19,7 @@
 import { EventEmitter } from "node:events";
 import { rankModels, getBalancedTopModels, detectModelTier, MODEL_TIERS } from "./modelRanking.js";
 import { getProviderConnections } from "@/lib/db/repos/connectionsRepo.js";
+import { getActiveRequests } from "@/lib/db/repos/usageRepo.js";
 
 export const healthEmitter = new EventEmitter();
 healthEmitter.setMaxListeners(50);
@@ -159,7 +160,7 @@ export function isCircuitOpen(providerId) {
  * Get a snapshot of all provider health for SSE / dashboard.
  * Merges connected providers from DB with health store so providers
  * with zero traffic still appear as active.
- * @returns {{ providers: Record<string, object> }}
+ * @returns {{ providers: Record<string, object>, activeProviders: number }}
  */
 export async function getProviderHealthSnapshot() {
   const providers = {};
@@ -194,7 +195,17 @@ export async function getProviderHealthSnapshot() {
       consecutiveFails: h.consecutiveFails,
     };
   }
-  return { providers };
+
+  // Inject activeProviders count from in-flight requests
+  let activeProviders = 0;
+  try {
+    const { activeRequests = [] } = await getActiveRequests();
+    activeProviders = new Set(activeRequests.map(r => r.provider).filter(Boolean)).size;
+  } catch {
+    // Fail-open
+  }
+
+  return { providers, activeProviders };
 }
 
 /**
