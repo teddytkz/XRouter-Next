@@ -580,6 +580,14 @@ export default function TokenSaverClient() {
         body: JSON.stringify({ id: skillId, action: "update" }),
       });
       if (res.ok) {
+        // Reload skills list to get updated version
+        const skillsRes = await fetch("/api/skills");
+        if (skillsRes.ok) {
+          const data = await skillsRes.json();
+          setSkills(data);
+        }
+        
+        // Refresh update check status
         const upRes = await fetch(`/api/plugins/update-check?plugin=${encodeURIComponent(skillId)}`, { credentials: "include" });
         if (upRes.ok) {
           const up = await upRes.json();
