@@ -110,9 +110,10 @@ function getDisplayHost() {
   return host === DEFAULT_HOST ? "localhost" : host;
 }
 const MAX_PORT_ATTEMPTS = 10;
-// Identifiers for killAllAppProcesses - only kill 9router specifically
+// Identifiers for killAllAppProcesses - only kill xrouter specifically
+// ponytail: keep ~/.9router/ user-data dir for back-compat (user upgrades)
 const PROCESS_IDENTIFIERS = [
-  '9router'  // Only package name - avoid killing other apps
+  'xrouter'  // Only package name - avoid killing other apps
 ];
 
 // Parse arguments
@@ -273,11 +274,12 @@ function killAllAppProcesses(appPort) {
           });
           const lines = output.split("\n").slice(1).filter(l => l.trim());
           lines.forEach(line => {
-            // Whitelist: real node process running 9router/cli.js, or next-server.
-            // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
+            // Whitelist: real node process running xrouter/cli.js, or next-server.
+            // Avoids killing editors/grep/strace/cursor that just have "xrouter" in cmdline.
+            // ponytail: also keep "9router" substrings for legacy process cmdlines from prior installs.
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
+              (cmd.includes("node") && (cmd.includes("xrouter") || cmd.includes("9router")) && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router") || cmd.includes("\\xrouter") || cmd.includes("/xrouter")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);

@@ -1,7 +1,7 @@
 {
-  "name": "9router-app",
+  "name": "xrouter-next",
   "version": "0.5.69",
-  "description": "9Router web dashboard",
+  "description": "XRouter-Next dashboard + OpenAI-compatible gateway",
   "private": true,
   "scripts": {
     "dev": "next dev --port 20127",
