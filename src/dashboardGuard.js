@@ -66,6 +66,20 @@ const PROTECTED_API_PATHS = [
   "/api/mcp",
   "/api/translator",
   "/api/tunnel",
+  "/api/plugins/hermes/install",
+  "/api/plugins/hermes/start",
+  "/api/plugins/hermes/stop",
+  "/api/plugins/hermes/restart",
+  "/api/plugins/hermes/update",
+  "/api/plugins/hermes/dashboard",
+  "/api/plugins/hermes/telegram",
+  "/api/plugins/update-check",
+  "/api/pxpipe/install",
+  "/api/pxpipe/start",
+  "/api/pxpipe/stop",
+  "/api/pxpipe/restart",
+  "/api/pxpipe/update",
+  "/api/skills/install",
 ];
 
 // Routes that spawn child processes or read host secrets — restrict to localhost.
