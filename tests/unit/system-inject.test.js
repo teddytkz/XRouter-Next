@@ -350,6 +350,72 @@ describe("system-inject kiro", () => {
     expect(body._kiroUpstreamModel).toBe("m");
     expect(Object.getOwnPropertyDescriptor(body, "_kiroUpstreamModel").enumerable).toBe(false);
   });
+
+  it("modern payload (no systemPrompt field): mirror-only inject, never create field", () => {
+    const body = {
+      conversationState: {
+        history: [{ userInputMessage: { content: "[Context: Current time is 2026-09-07T15:33:45.202Z]\n\nuser query", modelId: "m" } }],
+        currentMessage: { userInputMessage: { content: "current turn", modelId: "m" } },
+      },
+      agentMode: "FULL",
+      profileArn: "arn:...",
+    };
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    expect(body.systemPrompt).toBeUndefined();
+    expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P1}${SEP}[Context: Current time is 2026-09-07T15:33:45.202Z]${SEP}user query`);
+    expect(body.conversationState.currentMessage.userInputMessage.content).toBe("current turn");
+  });
+
+  it("modern payload: idempotent on retry (no field duplication)", () => {
+    const body = {
+      conversationState: {
+        history: [{ userInputMessage: { content: "user query", modelId: "m" } }],
+      },
+    };
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    expect(body.systemPrompt).toBeUndefined();
+    const firstContent = body.conversationState.history[0].userInputMessage.content;
+    expect(firstContent).toBe(`${P1}${SEP}user query`);
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    expect(body.systemPrompt).toBeUndefined();
+    expect(body.conversationState.history[0].userInputMessage.content).toBe(firstContent);
+  });
+
+  it("modern payload: multiple distinct prompts accumulate in content only", () => {
+    const body = {
+      conversationState: {
+        history: [{ userInputMessage: { content: "user query", modelId: "m" } }],
+      },
+    };
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    injectSystemPrompt(body, FORMATS.KIRO, P2);
+    expect(body.systemPrompt).toBeUndefined();
+    // Each new prompt prepends at head (stack order: most recent first)
+    expect(body.conversationState.history[0].userInputMessage.content).toBe(`${P2}${SEP}${P1}${SEP}user query`);
+  });
+
+  it("modern payload: fallback to currentMessage when history empty", () => {
+    const body = {
+      conversationState: {
+        history: [],
+        currentMessage: { userInputMessage: { content: "current query", modelId: "m" } },
+      },
+    };
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    expect(body.systemPrompt).toBeUndefined();
+    expect(body.conversationState.currentMessage.userInputMessage.content).toBe(`${P1}${SEP}current query`);
+  });
+
+  it("modern payload: no-op when no userInputMessage found", () => {
+    const body = {
+      conversationState: {
+        history: [{ assistantResponseMessage: { content: "..." } }],
+      },
+    };
+    injectSystemPrompt(body, FORMATS.KIRO, P1);
+    expect(body.systemPrompt).toBeUndefined();
+    expect(body.conversationState.history[0].assistantResponseMessage.content).toBe("...");
+  });
 });
 
 describe("system-inject regression fixes", () => {

@@ -61,7 +61,6 @@ export function injectSystemPrompt(body, format, prompt) {
 
 function isKiroBody(body) {
   if (!body || typeof body !== "object") return false;
-  if (typeof body.systemPrompt !== "string") return false;
   const cs = body.conversationState;
   if (!cs || typeof cs !== "object") return false;
   return Array.isArray(cs.history) || !!(cs.currentMessage && typeof cs.currentMessage === "object");
@@ -258,12 +257,43 @@ function injectGeminiSystem(body, prompt) {
 }
 
 // ---- Kiro ----
-// Updates top-level systemPrompt and only the mirrored leading prefix of the
-// first user history turn, else current user. next = old + SEP + prompt.
-// Replace old leading prefix only; preserve time context and user tail.
+// Modern payloads (post-1fc2a81d) carry NO top-level systemPrompt (CodeWhisperer
+// GenerateAssistantResponse rejects it with 400 REQUEST_BODY_INVALID). System
+// prompts ship as mirrored prefix into first-history-user/current user content.
+// Legacy payloads (test fixtures, KAS surfaces) still have the field — preserve
+// existing logic for them (atomicity, repair path, convergence).
 function injectKiroSystem(body, prompt) {
   try {
-    let oldPrompt = typeof body.systemPrompt === "string" ? body.systemPrompt : "";
+    const hasField = Object.prototype.hasOwnProperty.call(body, "systemPrompt");
+    
+    // Modern payload (no systemPrompt field): mirror-only inject into content.
+    if (!hasField || typeof body.systemPrompt !== "string") {
+      const cs = body.conversationState;
+      let targetMsg = null;
+      try {
+        const hist = Array.isArray(cs?.history) ? cs.history : null;
+        if (hist) {
+          for (const item of hist) {
+            if (item && item.userInputMessage) { targetMsg = item.userInputMessage; break; }
+          }
+        }
+        if (!targetMsg && cs?.currentMessage?.userInputMessage) {
+          targetMsg = cs.currentMessage.userInputMessage;
+        }
+      } catch (_) { return; }
+      if (!targetMsg) return;
+
+      const content = typeof targetMsg.content === "string" ? targetMsg.content : "";
+      // Idempotent: skip if prompt already present as SEP-delimited segment.
+      if (hasPrompt(content, prompt)) return;
+      // Prepend at head unconditionally (mimics legacy empty-old prepend behavior).
+      const newContent = content ? `${prompt}${SEP}${content}` : prompt;
+      try { targetMsg.content = newContent; } catch (_) {}
+      return;
+    }
+
+    // Legacy payload (systemPrompt field present): keep exact existing logic.
+    let oldPrompt = body.systemPrompt;
     // Repair path: a previous partial write left systemPrompt updated but user
     // content still mirroring the pre-write prefix. Re-derive the effective old
     // prefix from content so this pass converges instead of early-returning.
@@ -294,7 +324,7 @@ function injectKiroSystem(body, prompt) {
       if (hist) {
         for (const item of hist) {
           if (item && item.userInputMessage) { targetMsg = item.userInputMessage; break; }
-        }
+          }
       }
       if (!targetMsg && cs?.currentMessage?.userInputMessage) {
         targetMsg = cs.currentMessage.userInputMessage;
