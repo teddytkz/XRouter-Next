@@ -24,7 +24,7 @@ const navItems = [
   { href: "/dashboard/combos", label: "Combo & Vision Adapter", icon: "layers" },
   { href: "/dashboard/usage", label: "Usage", icon: "bar_chart" },
   { href: "/dashboard/quota", label: "Quota Tracker", icon: "data_usage" },
-  { href: "/dashboard/extended", label: "9Router Extended", icon: "auto_awesome" },
+  { href: "/dashboard/extended", label: "XRouter Next", icon: "auto_awesome" },
   { href: "/dashboard/token-saver", label: "Token Saver", icon: "savings" },
   // { href: "/dashboard/pxpipe", label: "PXPIPE", icon: "image" },
   { href: "/dashboard/cli-tools", label: "CLI Tools", icon: "terminal" },
@@ -504,7 +504,7 @@ export default function Sidebar({ onClose }) {
         isOpen={showUpdateModal}
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleAutoUpdate}
-        title="Update 9Router Extended"
+        title="Update XRouter Next"
         message={
           <div className="space-y-3.5">
             <p className="text-sm text-text-main">
@@ -590,8 +590,8 @@ export default function Sidebar({ onClose }) {
               <div className="flex items-center justify-center size-16 rounded-full bg-primary/20 text-primary mx-auto mb-4">
                 <span className="material-symbols-outlined text-[32px] animate-spin">sync</span>
               </div>
-              <h2 className="text-xl font-semibold text-white mb-2">9Router Updating...</h2>
-              <p className="text-text-muted mb-6">Updating 9Router Extended in background. Server will relaunch shortly.</p>
+              <h2 className="text-xl font-semibold text-white mb-2">XRouter Next Updating...</h2>
+              <p className="text-text-muted mb-6">Updating XRouter Next in background. Server will relaunch shortly.</p>
               <Button variant="secondary" onClick={() => globalThis.location.reload()}>
                 Reload Page
               </Button>
@@ -616,7 +616,7 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, pkgManager, onSe
           <span className="material-symbols-outlined text-[24px]">system_update</span>
         </div>
         <div>
-          <h2 className="text-lg font-semibold">Update 9Router Extended{latestVersion ? ` (v${latestVersion})` : ""}</h2>
+          <h2 className="text-lg font-semibold">Update XRouter Next{latestVersion ? ` (v${latestVersion})` : ""}</h2>
           <p className="text-xs text-white/60">
             {isDisconnected
               ? "Update in progress or server stopped."

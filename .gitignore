@@ -91,3 +91,5 @@ graphify-out/*
 .kiro/
 
 migration-docs/
+
+.tgz

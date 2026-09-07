@@ -115,7 +115,7 @@ const getPageInfo = (pathname) => {
     };
   if (pathname.includes("/extended"))
     return {
-      title: "9Router Extended",
+      title: "XRouter Next",
       description: "Custom rules, prompt injectors, and dynamic agent skills",
       icon: "auto_awesome",
       breadcrumbs: [],

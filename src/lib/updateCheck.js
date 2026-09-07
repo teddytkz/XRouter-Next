@@ -272,7 +272,7 @@ export async function fetchGitHubReleaseLatest(repo) {
 }
 
 /**
- * Resolver for 9Router Extended checking latest version from GitHub release.
+ * Resolver for XRouter checking latest version from GitHub release.
  */
 export async function fetchGitHubExtendedLatest(repo = "thunderkex/9router-extended") {
   return fetchGitHubReleaseLatest(repo);

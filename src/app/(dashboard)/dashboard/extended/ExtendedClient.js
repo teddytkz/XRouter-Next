@@ -460,7 +460,7 @@ export default function ExtendedClient() {
         <div className="space-y-1.5 min-w-0 flex-1">
           <div className="flex items-center gap-2.5 flex-wrap">
             <span className="material-symbols-outlined text-primary text-2xl">auto_awesome</span>
-            <h1 className="text-xl font-bold tracking-tight text-text-main truncate">9Router Extended</h1>
+            <h1 className="text-xl font-bold tracking-tight text-text-main truncate">XRouter Next</h1>
             <Badge variant="primary" size="sm">Studio & Registry</Badge>
           </div>
           <p className="text-sm text-text-muted">
