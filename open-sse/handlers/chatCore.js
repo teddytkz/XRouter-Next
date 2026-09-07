@@ -290,10 +290,14 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
 
   // Generic prompt-injection skills from manifest
   if (tokenSaverEnabled && activeGenericPrompts && activeGenericPrompts.length > 0) {
+    log?.debug?.("TOKEN-SAVER", `Processing ${activeGenericPrompts.length} generic prompts`);
     for (const skill of activeGenericPrompts) {
       injectGenericPrompt(translatedBody, finalFormat, skill.prompt);
       xf.push(`${skill.id.toUpperCase()}:ON`);
+      log?.debug?.("TOKEN-SAVER", `Injected skill: ${skill.id}`);
     }
+  } else if (activeGenericPrompts && activeGenericPrompts.length > 0 && !tokenSaverEnabled) {
+    log?.debug?.("TOKEN-SAVER", `Skipped ${activeGenericPrompts.length} generic prompts (tokenSaverEnabled=false)`);
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch

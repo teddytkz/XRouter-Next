@@ -380,10 +380,12 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
           : chatSettings.max_skills !== undefined
             ? Number(chatSettings.max_skills)
             : 1;
+        log.debug("ECC-ROUTER", `Classifying prompt (threshold=${threshold}, maxSkills=${maxSkills})`);
         const matches = await classifyPrompt(body, { threshold, maxSkills });
         const matchedSkills = [];
 
         if (matches && matches.length > 0) {
+          log.debug("ECC-ROUTER", `Found ${matches.length} matches`);
           for (const match of matches) {
             const promptContent = await loadSkillPrompt(match.folder);
             if (promptContent && promptContent.trim()) {
@@ -393,11 +395,14 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
                 : formatSkillInjection(match, promptContent);
               activeGenericPrompts.push({ id: `ecc-${match.name}`, prompt: formattedPrompt });
               matchedSkills.push({ name: match.name, score: match.score, folder: match.folder });
+              log.debug("ECC-ROUTER", `Added to activeGenericPrompts: ${match.name} (id: ecc-${match.name})`);
               if (process.env.ENABLE_REQUEST_LOGS === "true") {
                 log.info("ECC-ROUTER", `[ecc-auto-skill-router] Matched skill: ${match.name} (confidence ${match.score})`);
               }
             }
           }
+        } else {
+          log.debug("ECC-ROUTER", `No matches found (threshold=${threshold})`);
         }
       } catch (err) {
         log.warn("ECC-ROUTER", `Classification failed (fail-open): ${err.message}`);
