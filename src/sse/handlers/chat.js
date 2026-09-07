@@ -24,6 +24,9 @@ import * as log from "../utils/logger.js";
 import { updateProviderCredentials, checkAndRefreshToken } from "../services/tokenRefresh.js";
 import { getProjectIdForConnection } from "open-sse/services/projectId.js";
 import { stripModelContextMarker } from "open-sse/utils/modelMarkers.js";
+import { ECC_ROUTER_BYPASS_HEADER, classifyPrompt, loadSkillPrompt, formatSkillInjection } from "@/skills/autoRouter.js";
+import { markSkillInjected } from "@/lib/session/cache.js";
+import { resolveSessionId } from "open-sse/utils/sessionManager.js";
 
 /**
  * Handle chat completion request
@@ -225,6 +228,37 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // Extract userAgent from request
   const userAgent = request?.headers?.get("user-agent") || "";
 
+  // ECC Auto Skill Router: classify the prompt ONCE per request (before the
+  // account-fallback loop) and inject the best-matching skill prompt(s) into
+  // the system message later in chatCore. Fail-open: any error here must never
+  // break the request. Respects the per-request opt-out bypass header.
+  let eccInjection = null;
+  let eccSkills = null;
+  try {
+    const eccSettings = await getSettings();
+    if (eccSettings.ecc_auto_skill_routerEnabled && !clientRawRequest?.headers?.[ECC_ROUTER_BYPASS_HEADER]) {
+      const matches = await classifyPrompt(body, {
+        threshold: Number(eccSettings.ecc_auto_skill_routerConfidence ?? 0.35),
+        maxSkills: Number(eccSettings.ecc_auto_skill_routerMaxSkills ?? 1),
+      });
+      const sessionId = resolveSessionId({ headers: clientRawRequest?.headers, body, scope: "" });
+      const blocks = [];
+      const applied = [];
+      for (const m of matches) {
+        // Skip skills already injected earlier in this same conversation.
+        if (markSkillInjected(sessionId, m.id)) continue;
+        const promptContent = await loadSkillPrompt(m.folder);
+        if (!promptContent) continue;
+        blocks.push(formatSkillInjection(m, promptContent));
+        applied.push({ name: m.name, confidence: m.score });
+      }
+      eccInjection = blocks.length ? blocks.join("\n\n") : null;
+      eccSkills = applied.length ? applied : null;
+    }
+  } catch (err) {
+    log.warn("CHAT", "ECC skill router disabled (classify failed):", err?.message || err);
+  }
+
   // Try with available accounts (fallback on errors)
   const excludeConnectionIds = new Set();
   let lastError = null;
@@ -284,6 +318,8 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       cavemanLevel: chatSettings.cavemanLevel || "full",
       ponytailEnabled: !!chatSettings.ponytailEnabled,
       ponytailLevel: chatSettings.ponytailLevel || "full",
+      eccInjection,
+      eccSkills,
       pxpipeEnabled: !!chatSettings.pxpipeEnabled,
       pxpipeMinChars: chatSettings.pxpipeMinChars,
       pxpipeTimeoutMs: chatSettings.pxpipeTimeoutMs,
