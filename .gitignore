@@ -90,4 +90,4 @@ graphify-out/*
 # Kiro local workspace state
 .kiro/
 
-migration-doc/
+migration-docs/
