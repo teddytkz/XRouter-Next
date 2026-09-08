@@ -32,7 +32,7 @@ function TimeAgo({ timestamp }) {
   const [, setTick] = useState(0);
   
   useEffect(() => {
-    const timer = setInterval(() => setTick(t => t + 1), 1000);
+    const timer = setInterval(() => setTick(t => t + 1), 30000); // ponytail: 30s tick, upgrade to parent-level single interval when TimeAgo used elsewhere
     return () => clearInterval(timer);
   }, []);
   

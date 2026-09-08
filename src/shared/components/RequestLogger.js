@@ -12,15 +12,20 @@ export default function RequestLogger() {
   const [isAtBottom, setIsAtBottom] = useState(true);
   const scrollContainerRef = useRef(null);
 
+  const abortControllerRef = useRef(null);
+
   useEffect(() => {
     fetchLogs();
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
   }, []);
 
   useEffect(() => {
     let interval;
     if (autoRefresh) {
       interval = setInterval(() => {
-        fetchLogs(false);
+        if (!document.hidden) fetchLogs(false);
       }, 3000);
     }
     return () => clearInterval(interval);
@@ -40,15 +45,20 @@ export default function RequestLogger() {
   };
 
   const fetchLogs = async (showLoading = true) => {
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    abortControllerRef.current = new AbortController();
+    
     if (showLoading) setLoading(true);
     try {
-      const res = await fetch("/api/usage/request-logs");
+      const res = await fetch("/api/usage/request-logs", { signal: abortControllerRef.current.signal });
       if (res.ok) {
         const data = await res.json();
         setLogs(data);
       }
     } catch (error) {
-      console.error("Failed to fetch logs:", error);
+      if (error.name !== "AbortError") {
+        console.error("Failed to fetch logs:", error);
+      }
     } finally {
       if (showLoading) setLoading(false);
     }

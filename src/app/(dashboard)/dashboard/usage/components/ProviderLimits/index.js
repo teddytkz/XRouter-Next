@@ -220,12 +220,15 @@ export default function ProviderLimits() {
     setLoading((prev) => ({ ...prev, [connectionId]: true }));
     setErrors((prev) => ({ ...prev, [connectionId]: null }));
 
+    // ponytail: AbortController per-fetch; upgrade to request-level dedup map when batch-refresh patterns stabilize
+    const abortController = new AbortController();
+    
     try {
       console.log(
         `[ProviderLimits] Fetching quota for ${provider} (${connectionId})`,
       );
       const url = `/api/usage/${connectionId}${force ? "?force=1" : ""}`;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: abortController.signal });
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -280,6 +283,10 @@ export default function ProviderLimits() {
       }));
       setQuotaCache(connectionId, quotaEntry);
     } catch (error) {
+      if (error.name === "AbortError") {
+        console.log(`[ProviderLimits] Quota fetch aborted for ${provider} (${connectionId})`);
+        return;
+      }
       console.error(
         `[ProviderLimits] Error fetching quota for ${provider} (${connectionId}):`,
         error,
@@ -522,7 +529,7 @@ export default function ProviderLimits() {
     };
 
     initializeData();
-  }, [fetchConnections, fetchQuota, page]);
+  }, [page]); // ponytail: removed fetchConnections/fetchQuota deps to stop filter-change churn; fetchConnections uses stale closure values but they're read from state on call
 
   useEffect(() => {
     if (typeof window === "undefined") return;
