@@ -196,16 +196,18 @@ export async function getProviderHealthSnapshot() {
     };
   }
 
-  // Inject activeProviders count from in-flight requests
+  // Inject activeProviders count and total active requests from in-flight requests
   let activeProviders = 0;
+  let totalActiveRequests = 0;
   try {
     const { activeRequests = [] } = await getActiveRequests();
     activeProviders = new Set(activeRequests.map(r => r.provider).filter(Boolean)).size;
+    totalActiveRequests = activeRequests.reduce((sum, r) => sum + (r.count || 0), 0);
   } catch {
     // Fail-open
   }
 
-  return { providers, activeProviders };
+  return { providers, activeProviders, totalActiveRequests };
 }
 
 /**

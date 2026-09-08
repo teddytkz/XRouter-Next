@@ -52,12 +52,9 @@ function UsageContent() {
                 ? Math.round(measured.reduce((sum, p) => sum + p.emaLatency, 0) / measured.length)
                 : 0;
 
-              // ponytail: totalRequests shows cumulative since server start (rolling window counter), not live concurrent requests
-              const totalReq = providers.reduce((sum, p) => sum + (p.successCount || 0) + (p.failCount || 0), 0);
-
               setLiveStats((prev) => ({
                 ...prev,
-                totalRequests: totalReq,
+                totalRequests: data.totalActiveRequests ?? 0,
                 avgLatency: avgLat,
                 activeProviders: Number.isFinite(data.activeProviders) ? data.activeProviders : prev.activeProviders,
               }));
