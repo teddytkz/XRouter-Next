@@ -9,8 +9,9 @@ export default function RequestLogger() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [filterStatus, setFilterStatus] = useState("all"); // all, success, failed, pending
   const [searchTerm, setSearchTerm] = useState("");
-  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [isAtTop, setIsAtTop] = useState(true);
   const scrollContainerRef = useRef(null);
+  const firstRenderRef = useRef(true);
 
   const abortControllerRef = useRef(null);
 
@@ -31,17 +32,17 @@ export default function RequestLogger() {
     return () => clearInterval(interval);
   }, [autoRefresh]);
 
-  // Auto-scroll to bottom when new logs arrive (if user is already at bottom)
+  // Rows render newest-first; only restore scroll position when the user is
+  // near the top and a refresh would otherwise displace them.
   useEffect(() => {
-    if (isAtBottom && scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    if (scrollContainerRef.current && firstRenderRef.current) {
+      firstRenderRef.current = false;
+      scrollContainerRef.current.scrollTop = 0;
     }
-  }, [logs, isAtBottom]);
+  }, [logs]);
 
   const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
-    setIsAtBottom(atBottom);
+    setIsAtTop(e.target.scrollTop < 50);
   };
 
   const fetchLogs = async (showLoading = true) => {
@@ -274,18 +275,18 @@ export default function RequestLogger() {
           )}
           
           {/* Scroll indicator */}
-          {!isAtBottom && filteredLogs.length > 10 && (
+          {!isAtTop && filteredLogs.length > 10 && (
             <button
               onClick={() => {
                 if (scrollContainerRef.current) {
-                  scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-                  setIsAtBottom(true);
+                  scrollContainerRef.current.scrollTop = 0;
+                  setIsAtTop(true);
                 }
               }}
-              className="absolute bottom-4 right-4 px-3 py-2 rounded-lg bg-primary text-white shadow-lg hover:bg-primary/90 flex items-center gap-1 text-sm font-medium animate-bounce"
+              className="absolute bottom-4 right-4 px-3 py-2 rounded-lg bg-primary text-white shadow-lg hover:bg-primary/90 flex items-center gap-1 text-sm font-medium"
             >
-              <span className="material-symbols-outlined text-base">arrow_downward</span>
-              Scroll to bottom
+              <span className="material-symbols-outlined text-base">arrow_upward</span>
+              Newest logs
             </button>
           )}
         </div>
