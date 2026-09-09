@@ -8,10 +8,81 @@ const VERCEL_API = "https://api.vercel.com";
 const RELAY_FUNCTION_CODE = `
 export const config = { runtime: "edge" };
 
+// In-memory log storage (max 50 entries)
+const logs = [];
+const MAX_LOGS = 50;
+
+function addLog(entry) {
+  logs.push(entry);
+  if (logs.length > MAX_LOGS) {
+    logs.shift(); // Remove oldest entry
+  }
+}
+
 export default async function handler(req) {
+  const url = new URL(req.url);
+
+  // Endpoint untuk melihat logs
+  if (url.pathname === "/log") {
+    return new Response(JSON.stringify(logs, null, 2), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   const target = req.headers.get("x-relay-target");
   const relayPath = req.headers.get("x-relay-path") || "/";
+  const startTime = Date.now();
+
+  // Reroute httpbin.org ke mock response 200
+  if (target && target.includes("httpbin.org")) {
+    const duration = Date.now() - startTime;
+    const mockResponse = {
+      message: "httpbin.org mocked",
+      original_target: target,
+      path: relayPath,
+      method: req.method,
+      timestamp: new Date().toISOString(),
+    };
+
+    addLog({
+      timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        path: url.pathname,
+        targetUrl: target + relayPath,
+        headers: Object.fromEntries(req.headers.entries()),
+        body: null,
+      },
+      response: {
+        status: 200,
+        mocked: true,
+        body: JSON.stringify(mockResponse),
+      },
+      duration,
+    });
+
+    return new Response(JSON.stringify(mockResponse, null, 2), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+
   if (!target) {
+    addLog({
+      timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        path: url.pathname,
+        headers: Object.fromEntries(req.headers.entries()),
+      },
+      response: {
+        status: 400,
+        error: "Missing x-relay-target header",
+      },
+      duration: Date.now() - startTime,
+    });
+
     return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
       status: 400,
       headers: { "content-type": "application/json" },
@@ -19,25 +90,82 @@ export default async function handler(req) {
   }
 
   const targetUrl = target.replace(/\\/$/, "") + relayPath;
+  const headers = new Headers();
+  for (const [key, value] of req.headers.entries()) {
+    if (!["x-relay-target", "x-relay-path", "host"].includes(key.toLowerCase())) {
+      headers.set(key, value);
+    }
+  }
 
-  const headers = new Headers(req.headers);
-  headers.delete("x-relay-target");
-  headers.delete("x-relay-path");
-  headers.delete("host");
+  // Baca body sebagai ArrayBuffer untuk menghindari masalah streaming duplex
+  let body;
+  let requestBody = null;
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    body = await req.arrayBuffer();
+    try {
+      requestBody = new TextDecoder().decode(body);
+    } catch {
+      requestBody = \`<binary data: \${body.byteLength} bytes>\`;
+    }
+  }
 
-  const response = await fetch(targetUrl, {
-    method: req.method,
-    headers,
-    body: req.method !== "GET" && req.method !== "HEAD" ? req.body : undefined,
-    duplex: "half",
-  });
+  try {
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body,
+    });
 
-  return new Response(response.body, {
-    status: response.status,
-    headers: response.headers,
-  });
-}
-`;
+    const responseBody = await response.text();
+    const duration = Date.now() - startTime;
+
+    addLog({
+      timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        path: url.pathname,
+        targetUrl,
+        headers: Object.fromEntries(req.headers.entries()),
+        body: requestBody,
+      },
+      response: {
+        status: response.status,
+        headers: Object.fromEntries(response.headers.entries()),
+        body: responseBody.length > 1000 ? responseBody.substring(0, 1000) + "... (truncated)" : responseBody,
+      },
+      duration,
+    });
+
+    return new Response(responseBody, {
+      status: response.status,
+      headers: response.headers,
+    });
+  } catch (err) {
+    const duration = Date.now() - startTime;
+
+    addLog({
+      timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        path: url.pathname,
+        targetUrl,
+        headers: Object.fromEntries(req.headers.entries()),
+        body: requestBody,
+      },
+      response: {
+        status: 502,
+        error: "Relay Fetch Failed",
+        details: err.message,
+      },
+      duration,
+    });
+
+    return new Response(JSON.stringify({ error: "Relay Fetch Failed", details: err.message }), {
+      status: 502,
+      headers: { "content-type": "application/json" },
+    });
+  }
+}`;
 
 async function pollDeployment(deploymentId, token, maxMs = 120000) {
   const start = Date.now();
