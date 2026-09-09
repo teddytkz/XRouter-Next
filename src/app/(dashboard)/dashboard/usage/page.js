@@ -32,7 +32,7 @@ function UsageContent() {
   const router = useRouter();
 
   const [period, setPeriod] = useState(searchParams.get("period") || "today");
-  const [liveStats, setLiveStats] = useState({ totalRequests: 0, activeProviders: 0, avgLatency: 0 });
+  const [liveStats, setLiveStats] = useState({ totalRequests: 0, activeProviders: 0, avgLatency: 0, rpm: 0 });
   
   // Live stats from health stream
   useEffect(() => {
@@ -75,6 +75,22 @@ function UsageContent() {
     };
   }, []);
 
+  // RPM live via usage stream — pushes on every request (~250ms debounce)
+  useEffect(() => {
+    const es = new EventSource("/api/usage/stream");
+    es.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const buckets = data?.last10Minutes;
+        if (Array.isArray(buckets) && buckets.length) {
+          const current = buckets[buckets.length - 1]?.requests ?? 0;
+          setLiveStats((prev) => ({ ...prev, rpm: current }));
+        }
+      } catch {}
+    };
+    return () => es.close();
+  }, []);
+
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
     ? tabFromUrl
@@ -112,6 +128,13 @@ function UsageContent() {
             <div className="flex flex-col">
               <span className="text-[10px] uppercase font-semibold text-success/70 tracking-wider">Models Active</span>
               <span className="text-lg font-bold text-success tabular-nums">{liveStats.activeProviders}</span>
+            </div>
+          </div>
+          <div className="px-3 py-2 rounded-lg bg-info/10 border border-info/30 flex items-center gap-2">
+            <span className="material-symbols-outlined text-info text-base">timer</span>
+            <div className="flex flex-col">
+              <span className="text-[10px] uppercase font-semibold text-info/70 tracking-wider">RPM</span>
+              <span className="text-lg font-bold text-info tabular-nums">{liveStats.rpm}</span>
             </div>
           </div>
           <div className="px-3 py-2 rounded-lg bg-warning/10 border border-warning/30 flex items-center gap-2">
