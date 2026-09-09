@@ -5,6 +5,6 @@ export const metadata = {
   description: "Manage system prompt injectors, anti-AI-slop rules, token savers, and dynamic agent skills in XRouter Next.",
 };
 
-export default function ExtendedPage() {
+export default function NextFeaturePage() {
   return <ExtendedClient />;
 }

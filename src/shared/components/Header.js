@@ -113,7 +113,7 @@ const getPageInfo = (pathname) => {
       icon: "security",
       breadcrumbs: [],
     };
-  if (pathname.includes("/extended"))
+  if (pathname.includes("/next-feature"))
     return {
       title: "XRouter Next",
       description: "Custom rules, prompt injectors, and dynamic agent skills",
