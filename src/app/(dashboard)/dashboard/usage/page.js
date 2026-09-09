@@ -110,7 +110,7 @@ function UsageContent() {
           <div className="px-3 py-2 rounded-lg bg-success/10 border border-success/30 flex items-center gap-2">
             <span className="material-symbols-outlined text-success text-base">check_circle</span>
             <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-semibold text-success/70 tracking-wider">Active</span>
+              <span className="text-[10px] uppercase font-semibold text-success/70 tracking-wider">Models Active</span>
               <span className="text-lg font-bold text-success tabular-nums">{liveStats.activeProviders}</span>
             </div>
           </div>
