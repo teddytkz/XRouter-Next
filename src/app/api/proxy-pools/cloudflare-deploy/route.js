@@ -3,12 +3,82 @@ import { createProxyPool } from "@/models";
 
 // Relay worker source code deployed to Cloudflare
 const RELAY_WORKER_CODE = `
+// In-memory log storage (max 50 entries)
+const logs = [];
+const MAX_LOGS = 50;
+
+function addLog(entry) {
+  logs.push(entry);
+  if (logs.length > MAX_LOGS) {
+    logs.shift(); // Remove oldest entry
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
+    const url = new URL(request.url);
+
+    // Endpoint untuk melihat logs
+    if (url.pathname === "/log") {
+      return new Response(JSON.stringify(logs, null, 2), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     const target = request.headers.get("x-relay-target");
     const relayPath = request.headers.get("x-relay-path") || "/";
-    
+    const startTime = Date.now();
+
+    // Reroute httpbin.org ke mock response 200
+    if (target && target.includes("httpbin.org")) {
+      const duration = Date.now() - startTime;
+      const mockResponse = {
+        message: "httpbin.org mocked",
+        original_target: target,
+        path: relayPath,
+        method: request.method,
+        timestamp: new Date().toISOString(),
+      };
+
+      addLog({
+        timestamp: new Date().toISOString(),
+        request: {
+          method: request.method,
+          path: url.pathname,
+          targetUrl: target + relayPath,
+          headers: Object.fromEntries(request.headers.entries()),
+          body: null,
+        },
+        response: {
+          status: 200,
+          mocked: true,
+          body: JSON.stringify(mockResponse),
+        },
+        duration,
+      });
+
+      return new Response(JSON.stringify(mockResponse, null, 2), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
     if (!target) {
+      addLog({
+        timestamp: new Date().toISOString(),
+        request: {
+          method: request.method,
+          path: url.pathname,
+          headers: Object.fromEntries(request.headers.entries()),
+        },
+        response: {
+          status: 400,
+          error: "Missing x-relay-target header",
+        },
+        duration: Date.now() - startTime,
+      });
+
       return new Response(JSON.stringify({ error: "Missing x-relay-target header" }), {
         status: 400,
         headers: { "content-type": "application/json" },
@@ -21,9 +91,17 @@ export default {
       headers: new Headers(request.headers),
     };
 
+    let requestBody = null;
     if (request.method !== "GET" && request.method !== "HEAD") {
-      newRequestInit.body = request.body;
+      const bodyBuffer = await request.arrayBuffer();
+      newRequestInit.body = bodyBuffer;
       newRequestInit.duplex = "half";
+      
+      try {
+        requestBody = new TextDecoder().decode(bodyBuffer);
+      } catch {
+        requestBody = \`<binary data: \${bodyBuffer.byteLength} bytes>\`;
+      }
     }
 
     newRequestInit.headers.delete("x-relay-target");
@@ -32,12 +110,51 @@ export default {
 
     try {
       const response = await fetch(targetUrl, newRequestInit);
-      return new Response(response.body, {
+      const responseBody = await response.text();
+      const duration = Date.now() - startTime;
+
+      addLog({
+        timestamp: new Date().toISOString(),
+        request: {
+          method: request.method,
+          path: url.pathname,
+          targetUrl,
+          headers: Object.fromEntries(request.headers.entries()),
+          body: requestBody,
+        },
+        response: {
+          status: response.status,
+          headers: Object.fromEntries(response.headers.entries()),
+          body: responseBody.length > 1000 ? responseBody.substring(0, 1000) + "... (truncated)" : responseBody,
+        },
+        duration,
+      });
+
+      return new Response(responseBody, {
         status: response.status,
         headers: response.headers,
       });
     } catch (error) {
-      return new Response(JSON.stringify({ error: error.message }), {
+      const duration = Date.now() - startTime;
+
+      addLog({
+        timestamp: new Date().toISOString(),
+        request: {
+          method: request.method,
+          path: url.pathname,
+          targetUrl,
+          headers: Object.fromEntries(request.headers.entries()),
+          body: requestBody,
+        },
+        response: {
+          status: 502,
+          error: "Relay Fetch Failed",
+          details: error.message,
+        },
+        duration,
+      });
+
+      return new Response(JSON.stringify({ error: "Relay Fetch Failed", details: error.message }), {
         status: 502,
         headers: { "content-type": "application/json" },
       });
