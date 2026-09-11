@@ -5,6 +5,10 @@
 - **Cline**: add `authModes`, `hasOAuth`, `authHint`, `preserveHookAuth` to provider config; sync OAuth token/refresh URLs on ClinePass
 - **Docs**: add comprehensive Cline free tier setup guide at `docs/CLINE-FREE-GUIDE.md`
 
+## Fixes
+- **Cline**: send `X-CLIENT-TYPE: cline` instead of `9router` — upstream gates the `cline-free/*` tier on client type and returned 403 ("only available via Cline product surfaces") when streaming, or an opaque 500 `{"error":"empty response content"}` when not streaming. Premium `cline-pass/*` models were unaffected.
+- **Providers**: `forceStream` only set the dispatch flag, never the outbound payload — translators copy the client's `body.stream` verbatim, so JSON clients still hit the upstream non-streaming path (`cline-free/*` reasoning models then returned a bare 500 when `max_tokens` was too small to cover reasoning). The flag now also flips `translatedBody.stream`, so forced providers genuinely stream upstream and `handleForcedSSEToJson` reshapes the SSE back to JSON.
+
 # v0.5.69 (2026-09-05)
 
 ## Features

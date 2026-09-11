@@ -23,6 +23,10 @@ export default {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",
     },
+    // reasoning models (cline-free/*) can burn the whole budget on reasoning
+    // tokens; upstream then returns a bare 500 "empty response content"
+    // instead of an empty-but-valid completion. Streaming sidesteps it.
+    forceStream: true,
     tokenUrl: "https://api.cline.bot/api/v1/auth/token",
     refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
     auth: {

@@ -22,7 +22,9 @@ export function buildClineHeaders(token, extraHeaders = {}) {
     "User-Agent": `9Router/${APP_VERSION}`,
     "X-PLATFORM": process.platform || "unknown",
     "X-PLATFORM-VERSION": process.version || "unknown",
-    "X-CLIENT-TYPE": "9router",
+    // Must be "cline": upstream 403s the free tier ("only available via Cline
+    // product surfaces") for any other client type. Verified live 2026-09-11.
+    "X-CLIENT-TYPE": "cline",
     "X-CLIENT-VERSION": APP_VERSION,
     "X-CORE-VERSION": APP_VERSION,
     "X-IS-MULTIROOT": "false",

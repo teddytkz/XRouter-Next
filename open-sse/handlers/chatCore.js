@@ -203,6 +203,16 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     stripContinuityFields(translatedBody);
   }
 
+  // forceStream providers set the local `stream` flag, but translators copy the
+  // client's `body.stream` verbatim — without this the upstream still gets the
+  // non-streaming body. Reasoning-heavy models (cline-free/*) burn the whole
+  // max_tokens budget on reasoning and upstream answers a bare 500 instead of
+  // an empty completion; streaming avoids it. Handled below by
+  // handleForcedSSEToJson, which reshapes SSE back to JSON for JSON clients.
+  if (providerRequiresStreaming && !translatedBody.stream) {
+    translatedBody.stream = true;
+  }
+
   // Dedupe duplicate built-in tools when equivalent MCP tools are present (Claude clients only).
   if (clientTool === "claude" && Array.isArray(translatedBody.tools)) {
     const { tools: deduped, stripped } = dedupeTools(translatedBody.tools);
