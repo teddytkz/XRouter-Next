@@ -21,8 +21,11 @@ const PROVIDER_ORDER = [
 const NO_AUTH_PROVIDER_IDS = Object.keys(FREE_PROVIDERS).filter(id => FREE_PROVIDERS[id].noAuth);
 
 // Providers with per-account live catalogs via /api/providers/[id]/models.
-// Static registry stays as fallback when live fetch fails or is empty.
-const LIVE_CATALOG_PROVIDERS = ["cursor", "cline", "clinepass"];
+// Only cursor uses live here to match the provider page
+// (src/app/(dashboard)/dashboard/providers/[id]/page.js); cline/clinepass
+// use the static registry + custom models so the picker shows exactly what
+// the provider page shows.
+const LIVE_CATALOG_PROVIDERS = ["cursor"];
 
 // Fetch a provider's account-scoped catalog for every active connection and merge
 // the results. Entries collapse by model id on purpose: two connections of the
@@ -97,11 +100,9 @@ export default function ModelSelectModal({
   const [providerNodes, setProviderNodes] = useState([]);
   const [customModels, setCustomModels] = useState([]);
   const [disabledModels, setDisabledModels] = useState({});
-  // Cursor and Cline expose the usable catalog per account, so the static catalog is
-  // kept only as a fallback: it goes stale quickly and entitlements differ per account.
-  // Single map driven by LIVE_CATALOG_PROVIDERS so the constant cannot drift
-  // from the memos below; per-provider arrays stay referentially stable unless
-  // activeProviders itself changes.
+  // Cursor exposes the usable catalog per account, so the static catalog is
+  // kept only as a fallback. Cline/clinepass intentionally use the static
+  // registry here to match the provider page.
   const liveConnectionIdsByProvider = useMemo(() => {
     const map = Object.fromEntries(LIVE_CATALOG_PROVIDERS.map((id) => [id, []]));
     for (const p of activeProviders) {
@@ -109,13 +110,11 @@ export default function ModelSelectModal({
     }
     return map;
   }, [activeProviders]);
-  const cursorConnectionIds = liveConnectionIdsByProvider.cursor;
-  const clineConnectionIds = liveConnectionIdsByProvider.cline;
-  const clinepassConnectionIds = liveConnectionIdsByProvider.clinepass;
+  const cursorConnectionIds = liveConnectionIdsByProvider.cursor ?? [];
 
   const cursorModels = useLiveProviderModels(isOpen, cursorConnectionIds, "Cursor");
-  const clineModels = useLiveProviderModels(isOpen, clineConnectionIds, "Cline");
-  const clinepassModels = useLiveProviderModels(isOpen, clinepassConnectionIds, "ClinePass");
+  const clineModels = [];
+  const clinepassModels = [];
 
   const fetchCombos = async () => {
     try {
