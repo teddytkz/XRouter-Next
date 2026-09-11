@@ -51,17 +51,18 @@ export default {
     { id: "openai/gpt-5.4", name: "GPT-5.4" },
     { id: "google/gemini-3.1-pro-preview", name: "Gemini 3.1 Pro Preview" },
     { id: "google/gemini-3.1-flash-lite-preview", name: "Gemini 3.1 Flash Lite Preview" },
-    { id: "kwaipilot/kat-coder-pro", name: "KAT Coder Pro" },
-    // Free tier (verified live via GET /api/v1/ai/cline/recommended-models):
-    // billed $0 on usage, limited quota separate from ClinePass. The
-    // cline-free/* aliases require Cline product headers (see shared/clineAuth.js)
-    // or upstream 403s with "only available via Cline product surfaces".
-    { id: "cline-free/muse-spark-1.3-contributor", name: "Muse Spark 1.3 (Free)" },
+    { id: "kwaipilot/kat-coder-pro-v2.5", name: "KAT Coder Pro v2.5" },
+    // Free tier (updated 2026-09-11 from live catalog): billed $0 on usage,
+    // limited quota separate from ClinePass. Upstream changed prefix from
+    // cline-free/* to vendor/model format (e.g. meta/muse-spark-*).
+    { id: "meta/muse-spark-1.3-contributor", name: "Muse Spark 1.3 (Free)" },
+    { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2 (Free)" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (Free)" },
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash (Free)" },
-    { id: "cline-free/solar-pro4", name: "Solar Pro 4 (Free)" },
-    { id: "cline-free/longcat-2.0", name: "LongCat 2.0 (Free)" },
+    { id: "upstage/solar-pro4", name: "Solar Pro 4 (Free)" },
+    { id: "meituan/longcat-2.0", name: "LongCat 2.0 (Free)" },
     { id: "poolside/laguna-s-2.1:free", name: "Laguna S 2.1 (Free)" },
+    { id: "nvidia/nemotron-3.5-lightning:free", name: "Nemotron 3.5 Lightning (Free)" },
   ],
   oauth: {
     appBaseUrl: "https://app.cline.bot",

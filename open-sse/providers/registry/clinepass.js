@@ -42,16 +42,18 @@ export default {
     },
   },
   models: [
-    { id: "cline-pass/glm-5.2", name: "GLM-5.2 (ClinePass)" },
-    { id: "cline-pass/kimi-k2.7-code", name: "Kimi K2.7 Code (ClinePass)" },
-    { id: "cline-pass/kimi-k2.6", name: "Kimi K2.6 (ClinePass)" },
-    { id: "cline-pass/deepseek-v4-pro", name: "DeepSeek V4 Pro (ClinePass)" },
-    { id: "cline-pass/deepseek-v4-flash", name: "DeepSeek V4 Flash (ClinePass)" },
-    { id: "cline-pass/mimo-v2.5", name: "MiMo-V2.5 (ClinePass)" },
-    { id: "cline-pass/mimo-v2.5-pro", name: "MiMo-V2.5-Pro (ClinePass)" },
-    { id: "cline-pass/minimax-m3", name: "MiniMax M3 (ClinePass)" },
-    { id: "cline-pass/qwen3.7-max", name: "Qwen3.7 Max (ClinePass)" },
-    { id: "cline-pass/qwen3.7-plus", name: "Qwen3.7 Plus (ClinePass)" },
+    // Updated 2026-09-11 from live catalog: upstream changed prefix from
+    // cline-pass/* to vendor/model (e.g. z-ai/glm-5.2).
+    { id: "z-ai/glm-5.2", name: "GLM 5.2" },
+    { id: "moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code" },
+    { id: "moonshotai/kimi-k2.6", name: "Kimi K2.6" },
+    { id: "deepseek/deepseek-v4-pro", name: "DeepSeek V4 Pro" },
+    { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash" },
+    { id: "xiaomi/mimo-v2.5", name: "Mimo v2.5" },
+    { id: "xiaomi/mimo-v2.5-pro", name: "Mimo v2.5 Pro" },
+    { id: "minimax/minimax-m3", name: "MiniMax M3" },
+    { id: "qwen/qwen3.7-max", name: "Qwen 3.7 Max" },
+    { id: "qwen/qwen3.7-plus", name: "Qwen 3.7 Plus" },
   ],
   oauth: {
     appBaseUrl: "https://app.cline.bot",
