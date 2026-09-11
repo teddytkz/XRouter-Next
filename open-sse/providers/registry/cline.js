@@ -54,15 +54,21 @@ export default {
     { id: "kwaipilot/kat-coder-pro-v2.5", name: "KAT Coder Pro v2.5" },
     // Free tier (updated 2026-09-11 from live catalog): billed $0 on usage,
     // limited quota separate from ClinePass. Upstream changed prefix from
-    // cline-free/* to vendor/model format (e.g. meta/muse-spark-*).
+    // cline-free/* to vendor/model format (e.g. meta/muse-spark-*), but old
+    // cline-free/* IDs still work as aliases for backwards compatibility.
     { id: "meta/muse-spark-1.3-contributor", name: "Muse Spark 1.3 (Free)" },
+    { id: "cline-free/muse-spark-1.3-contributor", name: "Muse Spark 1.3 (Free, legacy alias)" },
     { id: "meta/muse-spark-1.2-contributor", name: "Muse Spark 1.2 (Free)" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash (Free)" },
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash (Free)" },
     { id: "upstage/solar-pro4", name: "Solar Pro 4 (Free)" },
+    { id: "cline-free/solar-pro4", name: "Solar Pro 4 (Free, legacy alias)" },
     { id: "meituan/longcat-2.0", name: "LongCat 2.0 (Free)" },
+    { id: "cline-free/longcat-2.0", name: "LongCat 2.0 (Free, legacy alias)" },
     { id: "poolside/laguna-s-2.1:free", name: "Laguna S 2.1 (Free)" },
     { id: "nvidia/nemotron-3.5-lightning:free", name: "Nemotron 3.5 Lightning (Free)" },
+    { id: "inclusionai/ling-3.0-flash-fin:free", name: "Ling 3.0 Flash Fin (Free)" },
+    { id: "dots-studio/dots-3-note-preview:free", name: "Dots 3 Note Preview (Free)" },
   ],
   oauth: {
     appBaseUrl: "https://app.cline.bot",
