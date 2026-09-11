@@ -6,7 +6,8 @@
   "description": "Unit tests for 9router embeddings endpoint",
   "scripts": {
     "test": "vitest run --reporter=verbose",
-    "test:watch": "vitest --reporter=verbose"
+    "test:watch": "vitest --reporter=verbose",
+    "test:gate": "vitest run --reporter=json --outputFile=/tmp/vitest-current.json && node __baseline__/verify-no-regression.mjs /tmp/vitest-current.json"
   },
   "devDependencies": {
     "vitest": "^4.0.0"

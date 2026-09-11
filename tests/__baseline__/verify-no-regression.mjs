@@ -11,10 +11,17 @@ const knownFails = new Set(
 const resultsPath = process.argv[2];
 if (!resultsPath) { console.error("Missing results.json path"); process.exit(2); }
 
+// Keys are "tests/<path from the repo's tests/ dir> :: <test name>". Derive the
+// suffix from the last "/tests/" segment instead of assuming the checkout lives
+// at "/app" — that assumption turned every key into "undefined :: …" off-CI and
+// reported the whole known-fails list as a regression.
+const key = (file, testName) =>
+  "tests/" + file.replace(/\\/g, "/").split("/tests/").pop() + " :: " + testName;
+
 const r = JSON.parse(readFileSync(resultsPath, "utf8"));
 const nowFails = r.testResults.flatMap(f =>
   f.assertionResults.filter(a => a.status === "failed")
-    .map(a => f.name.split("/app/")[1] + " :: " + a.fullName)
+    .map(a => key(f.name, a.fullName))
 );
 
 // Regression = fail bây giờ NHƯNG không có trong baseline known-fails
