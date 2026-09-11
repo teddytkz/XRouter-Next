@@ -349,8 +349,12 @@ export default function ModelSelectModal({
         };
       } else {
         const liveModels = providerId === "cursor" ? cursorModels : providerId === "cline" ? clineModels : providerId === "clinepass" ? clinepassModels : [];
-        const hardcodedModels = liveModels.length > 0
-          ? liveModels
+        // Filter rolling aliases (~model-latest) from Cline live catalog to reduce noise
+        const filteredLive = providerId === "cline" && liveModels.length > 0
+          ? liveModels.filter((m) => !m.id.startsWith("~"))
+          : liveModels;
+        const hardcodedModels = filteredLive.length > 0
+          ? filteredLive
           : getModelsByProviderId(providerId);
         const hardcodedIds = new Set(hardcodedModels.map((m) => m.id));
 
