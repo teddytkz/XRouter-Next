@@ -10,8 +10,12 @@ describe("cline headers", () => {
   });
 
   it("prefixes workos: once", () => {
-    expect(buildClineHeaders("tok").Authorization).toBe("Bearer workos:tok");
-    expect(buildClineHeaders("workos:tok").Authorization).toBe("Bearer workos:tok");
+    // Only WorkOS JWTs (base64url `eyJ…` header) get the prefix — ClinePass
+    // API keys (clp_…) must go verbatim or api.cline.bot answers 401 (#2333).
+    const jwt = "eyJhbGciOiJSUzI1NiJ9.eyJwYXAiJ9";
+    expect(buildClineHeaders(jwt).Authorization).toBe(`Bearer workos:${jwt}`);
+    expect(buildClineHeaders(`workos:${jwt}`).Authorization).toBe(`Bearer workos:${jwt}`);
+    expect(buildClineHeaders("clp_1234567890").Authorization).toBe("Bearer clp_1234567890");
   });
 
   it("omits Authorization without a token", () => {

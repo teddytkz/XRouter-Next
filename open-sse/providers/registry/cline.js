@@ -27,6 +27,8 @@ export default {
     // tokens; upstream then returns a bare 500 "empty response content"
     // instead of an empty-but-valid completion. Streaming sidesteps it.
     forceStream: true,
+    // Non-stream chat completions come back wrapped in {"success":true,"data":{...}}
+    quirks: { clineEnvelope: true },
     tokenUrl: "https://api.cline.bot/api/v1/auth/token",
     refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
     auth: {
