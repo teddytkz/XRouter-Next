@@ -22,10 +22,15 @@ export default {
       "HTTP-Referer": "https://cline.bot",
       "X-Title": "Cline",
     },
+    tokenUrl: "https://api.cline.bot/api/v1/auth/token",
+    refreshUrl: "https://api.cline.bot/api/v1/auth/refresh",
     auth: {
       combined: true,
       header: "Authorization",
       scheme: "bearer",
+      // Hook owns Authorization: workos:-prefixed OAuth vs plain API key
+      // (a merged token can't express both) — see applyAuth.
+      preserveHookAuth: true,
       hooks: [
         "clineHeaders",
       ],

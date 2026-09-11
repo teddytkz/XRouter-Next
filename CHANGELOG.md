@@ -1,3 +1,10 @@
+# v0.5.70 (2026-09-11)
+
+## Features
+- **Cline**: add 6 free tier models without ClinePass requirement — `cline-free/muse-spark-1.3-contributor`, `deepseek/deepseek-v4-flash`, `z-ai/glm-5.3-flash`, `cline-free/solar-pro4`, `cline-free/longcat-2.0`, `poolside/laguna-s-2.1:free` with $0 billing and separate quota limits
+- **Cline**: add `authModes`, `hasOAuth`, `authHint`, `preserveHookAuth` to provider config; sync OAuth token/refresh URLs on ClinePass
+- **Docs**: add comprehensive Cline free tier setup guide at `docs/CLINE-FREE-GUIDE.md`
+
 # v0.5.69 (2026-09-05)
 
 ## Features
