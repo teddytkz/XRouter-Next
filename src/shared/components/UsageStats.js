@@ -62,14 +62,14 @@ function LivePills({ live, compact = false }) {
       <div className={`${pill} bg-info/10 border-info/30`}>
         <span className="material-symbols-outlined text-info text-base">timer</span>
         <div className="flex flex-col min-w-0">
-          <span className="text-[10px] uppercase font-semibold text-info/70 tracking-wider">RPM · 5m avg</span>
+          <span className="text-[10px] uppercase font-semibold text-info/70 tracking-wider">RPM</span>
           <span className={`${val} font-bold text-info tabular-nums`}>{l.rpm ?? 0}</span>
         </div>
       </div>
       <div className={`${pill} bg-warning/10 border-warning/30`}>
         <span className="material-symbols-outlined text-warning text-base">speed</span>
         <div className="flex flex-col min-w-0">
-          <span className="text-[10px] uppercase font-semibold text-warning/70 tracking-wider">Avg Response · 5m</span>
+          <span className="text-[10px] uppercase font-semibold text-warning/70 tracking-wider">Avg Response</span>
           <span className={`${val} font-bold text-warning tabular-nums`}>{l.avgLatencyMs ?? 0}ms</span>
         </div>
       </div>
