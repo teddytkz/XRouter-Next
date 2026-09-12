@@ -39,9 +39,47 @@ function TimeAgo({ timestamp }) {
   return <>{timeAgo(timestamp)}</>;
 }
 
-function RecentRequests({ requests = [] }) {
+function LivePills({ live, compact = false }) {
+  const l = live || { requests: 0, modelsActive: 0, rpm: 0, avgLatencyMs: 0 };
+  const pill = "px-2.5 py-1.5 rounded-lg border flex items-center gap-2";
+  const val = compact ? "text-base" : "text-lg";
   return (
-    <Card className="flex min-w-0 flex-col overflow-hidden" padding="sm" style={{ height: 480 }}>
+    <div className={compact ? "grid grid-cols-2 gap-2" : "flex flex-wrap gap-2"} title="Last 5 minutes">
+      <div className={`${pill} bg-primary/10 border-primary/30`}>
+        <span className="material-symbols-outlined text-primary text-base">bolt</span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[10px] uppercase font-semibold text-primary/70 tracking-wider">Live Requests · 5m</span>
+          <span className={`${val} font-bold text-primary tabular-nums`}>{(l.requests ?? 0).toLocaleString()}</span>
+        </div>
+      </div>
+      <div className={`${pill} bg-success/10 border-success/30`}>
+        <span className="material-symbols-outlined text-success text-base">check_circle</span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[10px] uppercase font-semibold text-success/70 tracking-wider">Models Active · 5m</span>
+          <span className={`${val} font-bold text-success tabular-nums`}>{l.modelsActive ?? 0}</span>
+        </div>
+      </div>
+      <div className={`${pill} bg-info/10 border-info/30`}>
+        <span className="material-symbols-outlined text-info text-base">timer</span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[10px] uppercase font-semibold text-info/70 tracking-wider">RPM · 5m avg</span>
+          <span className={`${val} font-bold text-info tabular-nums`}>{l.rpm ?? 0}</span>
+        </div>
+      </div>
+      <div className={`${pill} bg-warning/10 border-warning/30`}>
+        <span className="material-symbols-outlined text-warning text-base">speed</span>
+        <div className="flex flex-col min-w-0">
+          <span className="text-[10px] uppercase font-semibold text-warning/70 tracking-wider">Avg Response · 5m</span>
+          <span className={`${val} font-bold text-warning tabular-nums`}>{l.avgLatencyMs ?? 0}ms</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RecentRequests({ requests = [], fill = false }) {
+  return (
+    <Card className={`flex min-w-0 flex-col overflow-hidden ${fill ? "flex-1 min-h-0" : ""}`} padding="sm" style={fill ? undefined : { height: 480 }}>
       {/* Header */}
       <div className="px-1 py-2 border-b border-border shrink-0">
         <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Recent Requests</span>
@@ -309,6 +347,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             activeRequests: data.activeRequests,
             recentRequests: data.recentRequests,
             errorProvider: data.errorProvider,
+            live5m: data.live5m,
             pending: data.pending,
           };
         });
@@ -485,7 +524,7 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
 
-      {/* Provider topology + Recent Requests */}
+      {/* Provider topology + live pills / Recent Requests */}
       {loading ? spinner : (
         <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <ProviderTopology
@@ -494,7 +533,10 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             lastProvider={stats.recentRequests?.[0]?.provider || ""}
             errorProvider={stats.errorProvider || ""}
           />
-          <RecentRequests requests={stats.recentRequests || []} />
+          <div className="flex min-w-0 flex-col gap-2 lg:h-[480px]">
+            <LivePills live={stats?.live5m} compact />
+            <RecentRequests requests={stats.recentRequests || []} fill />
+          </div>
         </div>
       )}
 

@@ -98,6 +98,7 @@ function aggregateEntryToDay(day, entry) {
 }
 
 function pushToRing(entry) {
+  if (entry && entry.latencyMs == null) entry.latencyMs = 0;
   recentRing.items.push(entry);
   if (recentRing.items.length > RING_CAP) {
     recentRing.items = recentRing.items.slice(-RING_CAP);
@@ -122,10 +123,13 @@ async function ensureRingInitialized() {
   recentRing.initialized = true;
   try {
     const db = await getAdapter();
-    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
+    const cols = db.all(`PRAGMA table_info(usageHistory)`).map((c) => c.name);
+    const hasLatency = cols.includes("latencyMs");
+    const rows = db.all(`SELECT timestamp, provider, model, connectionId, apiKey, endpoint, cost, status, tokens, meta${hasLatency ? ", latencyMs" : ""} FROM usageHistory ORDER BY id DESC LIMIT ?`, [RING_CAP]);
     recentRing.items = rows.reverse().map((r) => ({
       timestamp: r.timestamp, provider: r.provider, model: r.model, connectionId: r.connectionId,
       apiKey: r.apiKey, endpoint: r.endpoint, cost: r.cost, status: r.status,
+      latencyMs: hasLatency ? (r.latencyMs || 0) : 0,
       tokens: parseJson(r.tokens, {}),
       meta: typeof r.meta === "string" ? parseJson(r.meta, {}) : (r.meta || {}),
     }));
@@ -214,6 +218,7 @@ export async function getActiveRequests() {
 
   await ensureRingInitialized();
   const seen = new Set();
+  const cutoff5m = Date.now() - 5 * 60 * 1000;
   const recentRequests = [...recentRing.items]
     .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
     .map((e) => {
@@ -222,6 +227,7 @@ export async function getActiveRequests() {
         timestamp: e.timestamp, model: e.model, provider: e.provider || "",
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
+        latencyMs: e.latencyMs || 0,
         status: e.status || "ok",
         eccSkills: e.meta?.eccSkills,
       };
@@ -236,8 +242,36 @@ export async function getActiveRequests() {
     })
     .slice(0, 20);
 
+  // Live window: requests/models = 5 min, RPM + avg latency = realtime (last 60s)
+  let live5m = { requests: 0, modelsActive: 0, rpm: 0, avgLatencyMs: 0 };
+  try {
+    const db = await getAdapter();
+    const cols = db.all(`PRAGMA table_info(usageHistory)`).map((c) => c.name);
+    const hasLatency = cols.includes("latencyMs");
+    const cutoff1m = Date.now() - 60 * 1000;
+    const rows = db.all(
+      `SELECT timestamp, provider, model${hasLatency ? ", latencyMs" : ""} FROM usageHistory WHERE timestamp >= ?`,
+      [new Date(cutoff5m).toISOString()]
+    );
+    const models = new Set();
+    let latSum1m = 0, latCount1m = 0, rpmCount = 0;
+    for (const r of rows) {
+      models.add(`${r.provider || ""}/${r.model || ""}`);
+      if (new Date(r.timestamp).getTime() >= cutoff1m) {
+        rpmCount++;
+        if (hasLatency && Number.isFinite(r.latencyMs) && r.latencyMs > 0) { latSum1m += r.latencyMs; latCount1m++; }
+      }
+    }
+    live5m = {
+      requests: rows.length,
+      modelsActive: models.size,
+      rpm: rpmCount,
+      avgLatencyMs: latCount1m > 0 ? Math.round(latSum1m / latCount1m) : 0,
+    };
+  } catch {}
+
   const errorProvider = (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "";
-  return { activeRequests, recentRequests, errorProvider };
+  return { activeRequests, recentRequests, errorProvider, live5m };
 }
 
 export async function saveRequestUsage(entry) {
@@ -250,11 +284,17 @@ export async function saveRequestUsage(entry) {
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
     const completionTokens = tokens.completion_tokens || tokens.output_tokens || 0;
+    const latencyMs = Number.isFinite(entry.latencyMs) ? Math.max(0, Math.round(entry.latencyMs)) : 0;
 
     let inserted = false;
 
     // All 3 writes (history insert, daily upsert, lifetime counter) in ONE transaction.
     // better-sqlite3 is sync → no JS yield mid-transaction → no race in same process.
+    // latencyMs column may not exist on old DBs until syncSchema adds it — probe once.
+    let hasLatencyCol = true;
+    try {
+      hasLatencyCol = db.all(`PRAGMA table_info(usageHistory)`).some((c) => c.name === "latencyMs");
+    } catch {}
     db.transaction(() => {
       const existing = db.get(
         `SELECT id, endpoint FROM usageHistory
@@ -277,17 +317,29 @@ export async function saveRequestUsage(entry) {
         if (!existing.endpoint && entry.endpoint) {
           db.run(`UPDATE usageHistory SET endpoint = ? WHERE id = ?`, [entry.endpoint, existing.id]);
         }
+        if (hasLatencyCol && latencyMs > 0) {
+          try { db.run(`UPDATE usageHistory SET latencyMs = ? WHERE id = ? AND COALESCE(latencyMs, 0) = 0`, [latencyMs, existing.id]); } catch {}
+        }
         return;
       }
 
       db.run(
-        `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          entry.timestamp, entry.provider || null, entry.model || null,
-          entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
-          promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-          stringifyJson(tokens), stringifyJson(entry.meta || {}),
-        ]
+        hasLatencyCol
+          ? `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, latencyMs, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          : `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        hasLatencyCol
+          ? [
+              entry.timestamp, entry.provider || null, entry.model || null,
+              entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+              promptTokens, completionTokens, entry.cost || 0, latencyMs, entry.status || "ok",
+              stringifyJson(tokens), stringifyJson(entry.meta || {}),
+            ]
+          : [
+              entry.timestamp, entry.provider || null, entry.model || null,
+              entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
+              promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
+              stringifyJson(tokens), stringifyJson(entry.meta || {}),
+            ]
       );
 
       const dateKey = getLocalDateKey(entry.timestamp);
@@ -307,7 +359,7 @@ export async function saveRequestUsage(entry) {
     });
 
     if (inserted) {
-      pushToRing(entry);
+      pushToRing({ ...entry, latencyMs });
       scheduleStatsEvent("update", 250);
     }
   } catch (e) {
@@ -371,7 +423,9 @@ export async function getUsageStats(period = "all") {
   for (const k of allApiKeys) apiKeyMap[k.key] = { name: k.name, id: k.id, createdAt: k.createdAt };
 
   // recentRequests from live history (last 100 entries enough for 20 deduped)
-  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, meta FROM usageHistory ORDER BY id DESC LIMIT 100`);
+  const uhCols = db.all(`PRAGMA table_info(usageHistory)`).map((c) => c.name);
+  const uhHasLatency = uhCols.includes("latencyMs");
+  const recentRows = db.all(`SELECT timestamp, provider, model, tokens, status, meta${uhHasLatency ? ", latencyMs" : ""} FROM usageHistory ORDER BY id DESC LIMIT 100`);
   const seen = new Set();
   const recentRequests = recentRows
     .map((r) => {
@@ -382,6 +436,7 @@ export async function getUsageStats(period = "all") {
         promptTokens: t.prompt_tokens || t.input_tokens || 0,
         completionTokens: t.completion_tokens || t.output_tokens || 0,
         cachedTokens: t.cached_tokens || t.cache_read_input_tokens || 0,
+        latencyMs: uhHasLatency ? (r.latencyMs || 0) : 0,
         status: r.status || "ok",
         eccSkills: meta.eccSkills,
       };
@@ -396,6 +451,32 @@ export async function getUsageStats(period = "all") {
     })
     .slice(0, 20);
 
+  // Live window: requests/models = 5 min, RPM + avg latency = realtime (last 60s)
+  let live5m = { requests: 0, modelsActive: 0, rpm: 0, avgLatencyMs: 0 };
+  try {
+    const cutoff5mIso = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    const cutoff1m = Date.now() - 60 * 1000;
+    const liveRows = db.all(
+      `SELECT timestamp, provider, model${uhHasLatency ? ", latencyMs" : ""} FROM usageHistory WHERE timestamp >= ?`,
+      [cutoff5mIso]
+    );
+    const liveModels = new Set();
+    let latSum1m = 0, latCount1m = 0, rpmCount = 0;
+    for (const r of liveRows) {
+      liveModels.add(`${r.provider || ""}/${r.model || ""}`);
+      if (new Date(r.timestamp).getTime() >= cutoff1m) {
+        rpmCount++;
+        if (uhHasLatency && Number.isFinite(r.latencyMs) && r.latencyMs > 0) { latSum1m += r.latencyMs; latCount1m++; }
+      }
+    }
+    live5m = {
+      requests: liveRows.length,
+      modelsActive: liveModels.size,
+      rpm: rpmCount,
+      avgLatencyMs: latCount1m > 0 ? Math.round(latSum1m / latCount1m) : 0,
+    };
+  } catch {}
+
   const stats = {
     totalRequests: 0,
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0, totalCost: 0,
@@ -404,6 +485,7 @@ export async function getUsageStats(period = "all") {
     pending: pendingRequests,
     activeRequests: [],
     recentRequests,
+    live5m,
     errorProvider: (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "",
   };
 

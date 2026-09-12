@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, useEffect } from "react";
+import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, Card } from "@/shared/components";
 import RequestDetailsTab from "./components/RequestDetailsTab";
@@ -32,64 +32,6 @@ function UsageContent() {
   const router = useRouter();
 
   const [period, setPeriod] = useState(searchParams.get("period") || "today");
-  const [liveStats, setLiveStats] = useState({ totalRequests: 0, activeProviders: 0, avgLatency: 0, rpm: 0 });
-  
-  // Live stats from health stream
-  useEffect(() => {
-    let eventSource;
-
-    const connect = () => {
-      try {
-        eventSource = new EventSource("/api/health/latency-stream");
-
-        eventSource.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            if (data?.providers) {
-              const providers = Object.values(data.providers);
-              const measured = providers.filter((p) => Number.isFinite(p.emaLatency));
-              const avgLat = measured.length > 0
-                ? Math.round(measured.reduce((sum, p) => sum + p.emaLatency, 0) / measured.length)
-                : 0;
-
-              setLiveStats((prev) => ({
-                ...prev,
-                totalRequests: data.totalActiveRequests ?? 0,
-                avgLatency: avgLat,
-                activeProviders: Number.isFinite(data.activeProviders) ? data.activeProviders : prev.activeProviders,
-              }));
-            }
-          } catch (err) {
-            console.warn("Failed to parse live stats:", err);
-          }
-        };
-      } catch (err) {
-        console.error("Failed to connect live stats:", err);
-      }
-    };
-
-    connect();
-
-    return () => {
-      if (eventSource) eventSource.close();
-    };
-  }, []);
-
-  // RPM live via usage stream — pushes on every request (~250ms debounce)
-  useEffect(() => {
-    const es = new EventSource("/api/usage/stream");
-    es.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data);
-        const buckets = data?.last10Minutes;
-        if (Array.isArray(buckets) && buckets.length) {
-          const current = buckets[buckets.length - 1]?.requests ?? 0;
-          setLiveStats((prev) => ({ ...prev, rpm: current }));
-        }
-      } catch {}
-    };
-    return () => es.close();
-  }, []);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -112,41 +54,6 @@ function UsageContent() {
 
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
-      {/* Page Header with Live Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        {/* Live Stats Pills */}
-        <div className="flex flex-wrap gap-2">
-          <div className="px-3 py-2 rounded-lg bg-primary/10 border border-primary/30 flex items-center gap-2">
-            <span className="material-symbols-outlined text-primary text-base">bolt</span>
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-semibold text-primary/70 tracking-wider">Live Requests</span>
-              <span className="text-lg font-bold text-primary tabular-nums">{liveStats.totalRequests.toLocaleString()}</span>
-            </div>
-          </div>
-          <div className="px-3 py-2 rounded-lg bg-success/10 border border-success/30 flex items-center gap-2">
-            <span className="material-symbols-outlined text-success text-base">check_circle</span>
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-semibold text-success/70 tracking-wider">Models Active</span>
-              <span className="text-lg font-bold text-success tabular-nums">{liveStats.activeProviders}</span>
-            </div>
-          </div>
-          <div className="px-3 py-2 rounded-lg bg-info/10 border border-info/30 flex items-center gap-2">
-            <span className="material-symbols-outlined text-info text-base">timer</span>
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-semibold text-info/70 tracking-wider">RPM</span>
-              <span className="text-lg font-bold text-info tabular-nums">{liveStats.rpm}</span>
-            </div>
-          </div>
-          <div className="px-3 py-2 rounded-lg bg-warning/10 border border-warning/30 flex items-center gap-2">
-            <span className="material-symbols-outlined text-warning text-base">speed</span>
-            <div className="flex flex-col">
-              <span className="text-[10px] uppercase font-semibold text-warning/70 tracking-wider">Avg Response Time</span>
-              <span className="text-lg font-bold text-warning tabular-nums">{liveStats.avgLatency}ms</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Period Selector */}
       <Card padding="sm">
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">

@@ -2,24 +2,49 @@ import { getUsageStats, statsEmitter, getActiveRequests } from "@/lib/usageDb";
 
 export const dynamic = "force-dynamic";
 
+// Shared across ALL SSE connections: one heavy getUsageStats at a time, min 2s apart.
+// Per-connection recomputation of the "all"-period aggregate was blocking the
+// event loop under load (sync better-sqlite3) — this is the hang fix.
+const STATS_TTL_MS = 2000;
+const ACTIVE_TTL_MS = 500;
+const shared = { stats: null, statsAt: 0, statsInFlight: null, active: null, activeAt: 0, activeInFlight: null };
+
+function getStatsShared() {
+  if (shared.stats && Date.now() - shared.statsAt < STATS_TTL_MS) return Promise.resolve(shared.stats);
+  if (!shared.statsInFlight) {
+    shared.statsInFlight = getUsageStats()
+      .then((s) => { shared.stats = s; shared.statsAt = Date.now(); return s; })
+      .finally(() => { shared.statsInFlight = null; });
+  }
+  return shared.statsInFlight;
+}
+
+function getActiveShared() {
+  if (shared.active && Date.now() - shared.activeAt < ACTIVE_TTL_MS) return Promise.resolve(shared.active);
+  if (!shared.activeInFlight) {
+    shared.activeInFlight = getActiveRequests()
+      .then((a) => { shared.active = a; shared.activeAt = Date.now(); return a; })
+      .finally(() => { shared.activeInFlight = null; });
+  }
+  return shared.activeInFlight;
+}
+
 export async function GET() {
   const encoder = new TextEncoder();
   const state = { closed: false, keepalive: null, send: null, sendPending: null, cachedStats: null };
 
   const stream = new ReadableStream({
     async start(controller) {
-      // Full stats refresh (heavy) + immediate lightweight push
+      // Full stats refresh (heavy, shared+throttled) + immediate lightweight push
       state.send = async () => {
         if (state.closed) return;
         try {
-          // Push lightweight update immediately so UI reflects changes fast
           if (state.cachedStats) {
-            const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
+            const { activeRequests, recentRequests, errorProvider, live5m } = await getActiveShared();
+            const quickStats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider, live5m };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(quickStats)}\n\n`));
           }
-          // Then do full recalc and update cache
-          const stats = await getUsageStats();
+          const stats = await getStatsShared();
           state.cachedStats = stats;
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
@@ -34,8 +59,8 @@ export async function GET() {
       state.sendPending = async () => {
         if (state.closed || !state.cachedStats) return;
         try {
-          const { activeRequests, recentRequests, errorProvider } = await getActiveRequests();
-          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider };
+          const { activeRequests, recentRequests, errorProvider, live5m } = await getActiveShared();
+          const stats = { ...state.cachedStats, activeRequests, recentRequests, errorProvider, live5m };
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(stats)}\n\n`));
         } catch {
           state.closed = true;
