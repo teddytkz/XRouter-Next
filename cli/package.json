@@ -1,8 +1,9 @@
 {
-  "name": "9router",
-  "version": "0.5.75",
+  "name": "xrouter-next",
+  "version": "0.1.1",
   "description": "XRouter-Next CLI - Start and manage XRouter-Next server",
   "bin": {
+    "xrouter-next": "./cli.js",
     "9router": "./cli.js"
   },
   "files": [
@@ -16,7 +17,7 @@
   "scripts": {
     "dev": "nodemon -I --watch cli.js --watch src --watch hooks --ext js,json cli.js",
     "build": "node scripts/build-cli.js",
-    "pack:cli": "npm run build && npm pack --pack-destination .. && cd .. && mv \"9router-$npm_package_version.tgz\" \"xrouter-$npm_package_version.tgz\"",
+    "pack:cli": "npm run build && npm pack --pack-destination ..",
     "publish:cli": "npm run build && npm publish",
     "postinstall": "node hooks/postinstall.js",
     "prepublishOnly": "npm run build"
@@ -34,6 +35,7 @@
     "node": ">=18.0.0"
   },
   "keywords": [
+    "xrouter-next",
     "9router",
     "cli",
     "proxy",

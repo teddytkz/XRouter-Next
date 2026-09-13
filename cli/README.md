@@ -40,11 +40,11 @@
 **Option 1 — npm (recommended for desktop):**
 
 ```bash
-npm install -g 9router
-9router
+npm install -g xrouter-next
+xrouter-next
 
 # Or run directly with npx
-npx 9router
+npx xrouter-next
 ```
 
 **Option 2 — Docker (server/VPS):**
@@ -79,11 +79,11 @@ That's it! Start coding with FREE AI models.
 ## 🚀 CLI Options
 
 ```bash
-9router                    # Start with default settings
-9router --port 8080        # Custom port
-9router --no-browser       # Don't open browser
-9router --skip-update      # Skip auto-update check
-9router --help             # Show all options
+xrouter-next                    # Start with default settings
+xrouter-next --port 8080        # Custom port
+xrouter-next --no-browser       # Don't open browser
+xrouter-next --skip-update      # Skip auto-update check
+xrouter-next --help             # Show all options
 ```
 
 **Dashboard**: `http://localhost:20128/dashboard`

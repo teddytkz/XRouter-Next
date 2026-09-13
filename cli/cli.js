@@ -113,7 +113,8 @@ const MAX_PORT_ATTEMPTS = 10;
 // Identifiers for killAllAppProcesses - only kill ours specifically
 // ponytail: keep ~/.9router/ user-data dir for back-compat (user upgrades)
 const PROCESS_IDENTIFIERS = [
-  '9router'
+  '9router',
+  'xrouter-next'
 ];
 
 // Parse arguments
@@ -278,7 +279,7 @@ function killAllAppProcesses(appPort) {
             // Avoids killing editors/grep/strace/cursor that just have "9router" in cmdline.
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router")))
+              (cmd.includes("node") && (cmd.includes("9router") || cmd.includes("xrouter-next")) && (cmd.includes("cli.js") || cmd.includes("\\9router") || cmd.includes("/9router") || cmd.includes("xrouter-next")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const match = line.match(/^"(\d+)"/);
@@ -304,7 +305,7 @@ function killAllAppProcesses(appPort) {
             // Avoids killing grep/strace/editors/cursor that incidentally match.
             const cmd = line.toLowerCase();
             const isAppProcess =
-              (cmd.includes("node") && cmd.includes("9router") && (cmd.includes("cli.js") || cmd.includes("/9router")))
+              (cmd.includes("node") && (cmd.includes("9router") || cmd.includes("xrouter-next")) && (cmd.includes("cli.js") || cmd.includes("/9router") || cmd.includes("xrouter-next")))
               || cmd.includes("next-server");
             if (isAppProcess) {
               const parts = line.trim().split(/\s+/);

@@ -22,9 +22,13 @@ function getCliJsPath(cliPath) {
   const candidates = [
     path.join(process.cwd(), "cli", "cli.js"),
     path.join(process.cwd(), "cli.js"),
+    path.join(os.homedir(), ".bun", "install", "global", "node_modules", "xrouter-next", "cli.js"),
     path.join(os.homedir(), ".bun", "install", "global", "node_modules", "9router", "cli.js"),
+    path.join(process.env.APPDATA || "", "npm", "node_modules", "xrouter-next", "cli.js"),
     path.join(process.env.APPDATA || "", "npm", "node_modules", "9router", "cli.js"),
+    "/usr/local/lib/node_modules/xrouter-next/cli.js",
     "/usr/local/lib/node_modules/9router/cli.js",
+    "/usr/lib/node_modules/xrouter-next/cli.js",
     "/usr/lib/node_modules/9router/cli.js"
   ];
 

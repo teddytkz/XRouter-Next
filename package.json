@@ -1,6 +1,6 @@
 {
   "name": "xrouter-next",
-  "version": "0.5.75",
+  "version": "0.1.1",
   "description": "XRouter-Next dashboard + OpenAI-compatible gateway",
   "private": true,
   "scripts": {

@@ -30,6 +30,7 @@ async function findSkillsDir() {
     path.join(__dirname, "..", "..", "skills"),
     path.join(__dirname, "..", "skills"),
     path.join(__dirname, "skills"),
+    path.join(process.env.APPDATA || "", "npm", "node_modules", "xrouter-next", "cli", "app", "skills"),
     path.join(process.env.APPDATA || "", "npm", "node_modules", "9router", "cli", "app", "skills"),
     path.join(process.env.HOME || "", ".9router", "skills"),
   ];
