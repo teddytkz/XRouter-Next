@@ -135,6 +135,10 @@ export async function handleVideoCreate(request, action) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { preferredConnectionId });
 
     if (!credentials || credentials.allRateLimited) {
+      // Freebuff strict-model-assignment — see auth.js filterConnectionsForModel.
+      if (credentials?.strictBlocked) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `[${provider}/${model || "video"}] ${credentials.lastError}`);
+      }
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

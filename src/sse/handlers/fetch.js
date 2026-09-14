@@ -168,6 +168,11 @@ async function handleSingleProviderFetch(body, providerInput, request, apiKey, s
     const credentials = await getProviderCredentials(providerId, excludeConnectionIds, fetchLockKey);
 
     if (!credentials || credentials.allRateLimited) {
+      // Freebuff strict-model-assignment — see auth.js filterConnectionsForModel.
+      if (credentials?.strictBlocked) {
+        log.warn("FETCH", `[${providerId}] ${credentials.lastError}`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `[${providerId}] ${credentials.lastError}`);
+      }
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

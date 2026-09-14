@@ -70,6 +70,12 @@ const freebuffRegistry = {
   // in EditConnectionModal currently lists all entries, and Strict Model
   // Assignment is a per-connection choice — the tier annotation is here for
   // future filter UI, not for runtime rejection.
+  //
+  // Strict Model Assignment IS enforced at runtime: when enabled on the
+  // provider, `filterConnectionsForModel` (src/sse/services/auth.js) drops any
+  // account whose assignedModel doesn't match the requested model, and the
+  // request is refused with 403 before reaching Codebuff — so a mismatch never
+  // surfaces as an upstream `model_locked` (409) and never burns a session.
   models: [
     { id: "z-ai/glm-5.3-flash", name: "GLM 5.3 Flash", tier: "full" },
     { id: "deepseek/deepseek-v4-flash", name: "DeepSeek V4 Flash", tier: "full" },

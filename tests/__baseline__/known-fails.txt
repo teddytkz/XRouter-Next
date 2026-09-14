@@ -54,13 +54,6 @@ tests/unit/db-concurrent.test.js :: DB Concurrency — atomic safety 100 paralle
 tests/unit/db-concurrent.test.js :: DB Concurrency — atomic safety daily summary aggregates correctly under parallel writes
 tests/unit/db-concurrent.test.js :: DB Concurrency — atomic safety mixed concurrent: usage + details + connections + aliases
 tests/unit/executor-const-guard.test.js :: antigravity retry (intentional change: 429=6, 503=3) 429 attempts = 6
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel excludes connections with no assignedModel under strict mode
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel falls back to legacy freebuffModel when assignedModel is absent
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel keeps only connections whose assignedModel matches
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel passes through unchanged for freebuff when strict mode is off
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel passes through unchanged for non-freebuff providers
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel passes through unchanged when no model is requested
-tests/unit/freebuff-strict-model-assignment.test.js :: filterConnectionsForModel treats assignedModel=null as unassigned under strict mode
 tests/unit/health-and-session.test.js :: Routing Health & Circuit Breaker trips circuit breaker after consecutive failures threshold
 tests/unit/hermes-plugin.test.js :: Hermes Plugin Subsystem reports install and service status correctly
 tests/unit/image-fetch-hardening.test.js :: fetchImageAsBase64 hardening accepts valid PNG from public host

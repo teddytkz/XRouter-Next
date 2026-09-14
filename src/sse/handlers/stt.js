@@ -61,6 +61,10 @@ export async function handleStt(request) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model);
 
     if (!credentials || credentials.allRateLimited) {
+      // Freebuff strict-model-assignment — see auth.js filterConnectionsForModel.
+      if (credentials?.strictBlocked) {
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `[${provider}/${model}] ${credentials.lastError}`);
+      }
       if (credentials?.allRateLimited) {
         const msg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

@@ -19,6 +19,39 @@ function githubMonthlyResetMs(status, errorText, provider) {
 }
 
 /**
+ * Freebuff strict-model-assignment filter.
+ *
+ * A Freebuff session is locked to one model per account: requesting a different
+ * model while a session is active returns `model_locked` (409). When an admin
+ * enables `providerStrategies[freebuff].strictModelAssignment`, each account is
+ * pinned to exactly one model via `providerSpecificData.assignedModel`, and a
+ * request for any other model is refused locally — before it ever reaches the
+ * provider — instead of burning a round-trip that would 409 upstream.
+ *
+ * Contract:
+ *  - strict mode off / no model requested / non-array input → unchanged (same ref)
+ *  - strict mode on → keep only connections assigned to the requested model
+ *  - legacy `freebuffModel` is honored when `assignedModel` is absent
+ *  - `assignedModel: null` / empty counts as unassigned (excluded)
+ *
+ * @param {string} provider - Provider id (already alias-resolved)
+ * @param {Array} connections - Candidate connections
+ * @param {string|null} model - Requested model id
+ * @param {object} settings - App settings (reads providerStrategies)
+ * @returns {Array} filtered connections
+ */
+export function filterConnectionsForModel(provider, connections, model, settings = {}) {
+  const strict = settings?.providerStrategies?.[provider]?.strictModelAssignment === true;
+  if (!strict || !model || !Array.isArray(connections)) return connections;
+
+  return connections.filter((connection) => {
+    const data = connection?.providerSpecificData || {};
+    const assigned = data.assignedModel ?? data.freebuffModel ?? null;
+    return typeof assigned === "string" && assigned !== "" && assigned === model;
+  });
+}
+
+/**
  * Get provider credentials from localDb
  * Filters out unavailable accounts and returns the selected account based on strategy
  * @param {string} provider - Provider name
@@ -107,6 +140,61 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     });
 
+    const settings = await getSettings();
+    // Per-provider strategy overrides global setting
+    const providerOverride = (settings.providerStrategies || {})[providerId] || {};
+
+    // Freebuff strict-model-assignment: an account may only serve the model it
+    // is pinned to. Filtering happens before selection so a mismatched request
+    // is refused locally instead of burning an upstream call that would come
+    // back model_locked (409). Matching rules live in filterConnectionsForModel.
+    const strictOn = providerOverride.strictModelAssignment === true;
+    let candidateConnections = availableConnections;
+    if (strictOn && model) {
+      const assignedConnections = filterConnectionsForModel(providerId, connections, model, settings);
+      if (assignedConnections.length === 0) {
+        // No account is pinned to this model at all → configuration error.
+        // Retrying cannot help, so refuse immediately on the first pass. A
+        // later pass means the assignment changed mid-request; fall through so
+        // the caller reports the real error instead of a misleading 403.
+        if (excludeSet.size === 0) {
+          log.warn("AUTH", `${provider} | strict model assignment: no account assigned to ${model}`);
+          return {
+            allRateLimited: true,
+            strictBlocked: true,
+            lastError: `Model "${model}" is not assigned to any ${provider} account (Strict Model Assignment is on). Assign it in the dashboard or turn the toggle off.`,
+            lastErrorCode: 403,
+            retryAfter: null,
+            retryAfterHuman: "strict model assignment",
+          };
+        }
+        log.warn("AUTH", `${provider} | strict model assignment: no remaining account for ${model}`);
+        return null;
+      }
+
+      candidateConnections = filterConnectionsForModel(providerId, availableConnections, model, settings);
+      if (candidateConnections.length === 0) {
+        // Accounts ARE pinned to this model but none can serve right now
+        // (locked / already failed this request). Surface the lock timing when
+        // known so the caller retries at the right time rather than reporting
+        // "not assigned", which would be wrong here.
+        const locked = assignedConnections.filter((c) => isModelLockActive(c, model));
+        const earliest = locked.map((c) => getEarliestModelLockUntil(c)).filter(Boolean).sort()[0] || null;
+        if (earliest) {
+          log.warn("AUTH", `${provider} | strict model assignment: ${model} account(s) locked (${formatRetryAfter(earliest)})`);
+          return {
+            allRateLimited: true,
+            retryAfter: earliest,
+            retryAfterHuman: formatRetryAfter(earliest),
+            lastError: locked[0]?.lastError || null,
+            lastErrorCode: locked[0]?.errorCode || null,
+          };
+        }
+        log.warn("AUTH", `${provider} | strict model assignment: no remaining account for ${model}`);
+        return null;
+      }
+    }
+
     if (availableConnections.length === 0) {
       // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
@@ -133,15 +221,12 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       return null;
     }
 
-    const settings = await getSettings();
-    // Per-provider strategy overrides global setting
-    const providerOverride = (settings.providerStrategies || {})[providerId] || {};
     const strategy = providerOverride.fallbackStrategy || settings.fallbackStrategy || "fill-first";
 
     let connection;
     // Pin to preferred connection if specified and available
     if (preferredConnectionId) {
-      connection = availableConnections.find((c) => c.id === preferredConnectionId);
+      connection = candidateConnections.find((c) => c.id === preferredConnectionId);
       if (connection) {
         log.info("AUTH", `${provider} | pinned to ${connection.id?.slice(0, 8)} (${connection.name || connection.email || "unnamed"})`);
       }
@@ -152,7 +237,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       const stickyLimit = providerOverride.stickyRoundRobinLimit || settings.stickyRoundRobinLimit || 3;
 
       // Sort by lastUsed (most recent first) to find current candidate
-      const byRecency = [...availableConnections].sort((a, b) => {
+      const byRecency = [...candidateConnections].sort((a, b) => {
         if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
         if (!a.lastUsedAt) return 1;
         if (!b.lastUsedAt) return -1;
@@ -172,7 +257,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
         });
       } else {
         // Pick the least recently used (excluding current if possible)
-        const sortedByOldest = [...availableConnections].sort((a, b) => {
+        const sortedByOldest = [...candidateConnections].sort((a, b) => {
           if (!a.lastUsedAt && !b.lastUsedAt) return (a.priority || 999) - (b.priority || 999);
           if (!a.lastUsedAt) return -1;
           if (!b.lastUsedAt) return 1;
@@ -189,7 +274,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
     } else {
       // Default: fill-first (already sorted by priority in getProviderConnections)
-      connection = availableConnections[0];
+      connection = candidateConnections[0];
     }
 
     const resolvedProxy = await resolveConnectionProxyConfig(connection.providerSpecificData || {});

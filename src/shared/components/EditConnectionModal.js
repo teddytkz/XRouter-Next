@@ -297,7 +297,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
             value={assignedModel}
             onChange={(e) => setAssignedModel(e.target.value)}
             options={[{ value: "", label: "— Unassigned —" }, ...assignedModelOptions.map((m) => ({ value: m.id, label: m.name || m.id }))]}
-            hint="Only used when Strict Model Assignment is enabled on the provider."
+            hint="Required when Strict Model Assignment is enabled: this account will only serve the selected model."
           />
         )}
 

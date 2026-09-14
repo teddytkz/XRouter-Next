@@ -177,6 +177,11 @@ async function handleSingleProviderSearch(body, providerInput, request, apiKey, 
     }
 
     if (!credentials || credentials.allRateLimited) {
+      // Freebuff strict-model-assignment — see auth.js filterConnectionsForModel.
+      if (credentials?.strictBlocked) {
+        log.warn("SEARCH", `[${providerId}] ${credentials.lastError}`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `[${providerId}] ${credentials.lastError}`);
+      }
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = lastStatus || Number(credentials.lastErrorCode) || HTTP_STATUS.SERVICE_UNAVAILABLE;

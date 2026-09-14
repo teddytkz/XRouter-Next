@@ -253,6 +253,13 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
 
     // All accounts unavailable
     if (!credentials || credentials.allRateLimited) {
+      // Freebuff strict-model-assignment: the requested model isn't pinned to
+      // any account. Hard-refuse (403) instead of retrying — forwarding would
+      // only bounce back as model_locked (409) from the provider.
+      if (credentials?.strictBlocked) {
+        log.warn("CHAT", `[${provider}/${model}] ${credentials.lastError}`);
+        return errorResponse(HTTP_STATUS.FORBIDDEN, `[${provider}/${model}] ${credentials.lastError}`);
+      }
       if (credentials?.allRateLimited) {
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
