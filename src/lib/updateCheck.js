@@ -270,10 +270,3 @@ export async function fetchGitHubReleaseLatest(repo) {
   }
   return tag ? tag.replace(/^v/i, "") : null;
 }
-
-/**
- * Resolver for XRouter checking latest version from GitHub release.
- */
-export async function fetchGitHubExtendedLatest(repo = "thunderkex/9router-extended") {
-  return fetchGitHubReleaseLatest(repo);
-}

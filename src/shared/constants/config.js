@@ -9,7 +9,12 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
+  // This fork ships from the `development` branch (the default `master` branch
+  // still tracks the stale upstream 9router-app tree). Keep the changelog in
+  // sync with the branch that actually contains the XRouter-Next code.
+  repo: "teddytkz/XRouter-Next",
+  branch: "development",
+  changelogUrl: "https://raw.githubusercontent.com/teddytkz/XRouter-Next/refs/heads/development/CHANGELOG.md",
   donateUrl: "https://9router.com/api/donate",
 };
 
@@ -18,6 +23,10 @@ export const UPDATER_CONFIG = {
   npmPackageName: "xrouter-next",
   installCmd: "npm i -g xrouter-next",
   installCmdLatest: "npm i -g xrouter-next@latest --prefer-online",
+  // Update source of truth is the npm registry (see src/app/api/version/route.js).
+  // GitHub is kept for reference/changelog only — this repo publishes no releases/tags.
+  githubRepo: "teddytkz/XRouter-Next",
+  githubBranch: "development",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,

@@ -62,11 +62,14 @@ export default function Sidebar({ onClose }) {
     if (updateInfo?.packageManagers?.[pm]) {
       return updateInfo.packageManagers[pm];
     }
-    const tarball = updateInfo?.tarballUrl || UPDATER_CONFIG.tarballUrl;
-    if (pm === "bun") return `bun add -g ${tarball}`;
-    if (pm === "pnpm") return `pnpm add -g ${tarball}`;
-    if (pm === "yarn") return `yarn global add ${tarball}`;
-    return `npm i -g ${tarball} --force`;
+    // Fallback when /api/version is unreachable: install the published npm
+    // package by name. Never build a tarball URL — the old UPDATER_CONFIG
+    // .tarballUrl key never existed, which produced `npm i -g undefined`.
+    const pkgName = updateInfo?.packageName || UPDATER_CONFIG.npmPackageName;
+    if (pm === "bun") return `bun add -g ${pkgName}@latest`;
+    if (pm === "pnpm") return `pnpm add -g ${pkgName}@latest`;
+    if (pm === "yarn") return `yarn global add ${pkgName}@latest`;
+    return `npm i -g ${pkgName}@latest --prefer-online`;
   };
 
   const INSTALL_CMD = getInstallCmd(pkgManager);
