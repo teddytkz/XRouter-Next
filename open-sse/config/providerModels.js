@@ -25,13 +25,21 @@ const DOT_VERSION_PROVIDERS = new Set(["kr", "kiro"]);
 
 // Find a registry entry by id. For Kiro models, tolerates dash/dot version separators
 // ("claude-sonnet-4-5" ~= "claude-sonnet-4.5"). Other providers use exact match only.
+// Thinking suffixes ("model(high)") are not registry ids: strip a trailing
+// parenthesised group so `gpt-5.6-luna(high)` resolves to the `gpt-5.6-luna`
+// entry (and inherits its targetFormat/supportedFormats) — PR #4084.
+function stripThinkingSuffix(modelId) {
+  return typeof modelId === "string" ? modelId.replace(/\([^()]+\)\s*$/, "").trim() : modelId;
+}
+
 function findModel(models, modelId, aliasOrId) {
   if (!models) return undefined;
-  const found = models.find(m => m.id === modelId);
+  const baseModelId = stripThinkingSuffix(modelId);
+  const found = models.find(m => m.id === modelId || m.id === baseModelId);
   if (found) return found;
   if (!DOT_VERSION_PROVIDERS.has(aliasOrId)) return undefined;
-  const normalized = normalizeModelId(modelId);
-  if (normalized === modelId) return undefined;
+  const normalized = normalizeModelId(baseModelId);
+  if (normalized === baseModelId) return undefined;
   return models.find(m => m.id === normalized);
 }
 
