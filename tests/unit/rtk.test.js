@@ -228,7 +228,8 @@ describe("RTK filters", () => {
     const input = makeLongDiff();
     const out = gitDiff(input, 500);
     expect(out).toContain("foo.js");
-    expect(out).toContain("lines truncated");
+    // v0.49.0 split the note by sign: "100 additions truncated", not "lines truncated".
+    expect(out).toMatch(/\d+ addition(s)? truncated/);
     expect(out.length).toBeLessThan(input.length);
   });
 

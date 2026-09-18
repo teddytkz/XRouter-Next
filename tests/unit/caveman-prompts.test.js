@@ -36,7 +36,15 @@ describe("Caveman prompt coverage", () => {
 
   it("adds preserve-user-language guidance to every level", () => {
     for (const level of LEVEL_KEYS) {
-      expect(CAVEMAN_PROMPTS[level]).toContain("Preserve the user's dominant language");
+      expect(CAVEMAN_PROMPTS[level]).toContain("preserve the user's dominant language");
+    }
+  });
+
+  it("adds ASD-STE100 clarity register to every level (upstream v2.5.0)", () => {
+    for (const level of LEVEL_KEYS) {
+      expect(CAVEMAN_PROMPTS[level]).toContain("Clarity register: mix ASD-STE100");
+      expect(CAVEMAN_PROMPTS[level]).toContain("One idea per sentence");
+      expect(CAVEMAN_PROMPTS[level]).toContain("Conflict between them: clarity win");
     }
   });
 

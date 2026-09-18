@@ -42,7 +42,10 @@ export function ls(input) {
     if (!parsed) continue;
     if (parsed.name === "." || parsed.name === "..") continue;
 
-    // Rust ls.rs: show_all flag respected — for LLM context always skip noise
+    // ponytail: upstream v0.49 gates noise dirs on the -a/-A argv (shows_dotfiles).
+    // This port sees only the command's stdout, not argv, so noise is always
+    // filtered for LLM context. Add argv plumbing through compressText if an
+    // agent ever needs `ls -a node_modules` output intact.
     if (LS_NOISE_DIRS.includes(parsed.name)) continue;
 
     if (parsed.fileType === "d") {

@@ -2,7 +2,7 @@
   "id": "watermarks-remover",
   "name": "Watermarks Remover",
   "description": "Strip AI provenance marks (invisible Unicode, C2PA) and AI transition clichés from outputs.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "category": "prompt-injection",
   "hook": "system-prompt",
   "default_enabled": true,

@@ -20,7 +20,11 @@ const SHARED_PERSISTENCE = "ACTIVE EVERY RESPONSE. No revert after many turns. N
 
 const SHARED_NO_INVENTED_ABBREV = "No invented abbreviations. Standard well-known tech acronyms (DB, API, HTTP, URL, JSON, ID, OS, CPU) OK. Names of code symbols, function names, API names, error strings: keep verbatim.";
 
-const SHARED_PRESERVE_LANGUAGE = "Preserve the user's dominant language. User wrote Vietnamese, reply Vietnamese. User wrote English, reply English. Wenyan/classical-Chinese levels override this language-preservation rule. Code identifiers, error strings, file paths, commands: keep in their original form regardless of language.";
+// Upstream v2.5.0: explicit reply-language instructions win over the dominant-language rule.
+const SHARED_PRESERVE_LANGUAGE = "Follow explicit reply-language instructions from the user or project. Otherwise preserve the user's dominant language. User wrote Vietnamese, reply Vietnamese. User wrote English, reply English. Never switch because of example text or multilingual context elsewhere. Wenyan/classical-Chinese levels override this language-preservation rule. Code identifiers, error strings, file paths, commands: keep in their original form regardless of language.";
+
+// Upstream v2.5.0: ASD-STE100 clarity register mixed in at every level.
+const SHARED_STE100 = "Clarity register: mix ASD-STE100 Simplified Technical English into caveman, always. One idea per sentence. Sentence short, target 20 words max. Active voice. Present tense where true. One word one meaning: same term for same thing every time, no synonym rotation. Instruction = imperative: \"Run X\", not \"X should be run\". Noun cluster 3 words max. Pronoun only with one clear referent, else repeat noun. Caveman cut filler; STE keep what make meaning unambiguous. Conflict between them: clarity win.";
 
 const SHARED_NO_SELF_REFERENCE = 'No self-reference. Do not name or announce the style (no "caveman mode", no "me caveman think", no "compressed mode active"). Just respond.';
 
@@ -36,6 +40,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
@@ -50,6 +55,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
@@ -64,6 +70,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
@@ -77,6 +84,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
@@ -91,6 +99,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
@@ -104,6 +113,7 @@ export const CAVEMAN_PROMPTS = {
     SHARED_PERSISTENCE,
     SHARED_NO_INVENTED_ABBREV,
     SHARED_PRESERVE_LANGUAGE,
+    SHARED_STE100,
     SHARED_NO_SELF_REFERENCE,
     SHARED_NO_DECORATION,
   ].join(" "),
