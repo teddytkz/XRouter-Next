@@ -10,17 +10,19 @@
  * Same fallback ladder as upstream: enhanced (sha256 of the machine digest) →
  * legacy (`codebuff-cli-<random>`), cached for the process lifetime so every
  * login step ships one fingerprint.
+ *
+ * Raw id comes from the shared machineId util: it persists the value on disk
+ * so CLI/server/middleware (and every process restart) agree on one id.
  */
 
 import { createHash, randomBytes } from "node:crypto";
-import machineIdPkg from "node-machine-id";
-const { machineId } = machineIdPkg;
+import { getRawMachineId } from "@/shared/utils/machineId";
 import { networkInterfaces, hostname } from "node:os";
 
 let cachedFingerprint = null;
 
 async function calculateEnhancedFingerprint() {
-  const id = await machineId();
+  const id = await getRawMachineId();
   if (!id || id === "unknown" || id.length < 8) throw new Error("invalid machine id");
 
   const macs = Object.values(networkInterfaces())
