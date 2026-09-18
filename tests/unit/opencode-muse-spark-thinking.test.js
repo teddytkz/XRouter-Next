@@ -209,12 +209,25 @@ describe("OpenCode Free Muse Spark thinking", () => {
     expect(JSON.stringify(out.input)).not.toContain("ENC_BLOB_TURN_1");
     // User message, function_call, function_call_output, and next user message survive
     expect(out.input.map((item) => item.type)).toEqual(["message", "function_call", "function_call_output", "message"]);
-    // Tools flattened and empty properties added
+    // Tools flattened and empty properties added; the free-tier "bash"/"read"
+    // fingerprint stubs are appended after the client's own tools.
     expect(out.tools).toEqual([
       {
         type: "function",
         name: "shell",
         description: "Run shell command",
+        parameters: { type: "object", properties: {} },
+      },
+      {
+        type: "function",
+        name: "bash",
+        description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
+        parameters: { type: "object", properties: {} },
+      },
+      {
+        type: "function",
+        name: "read",
+        description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
         parameters: { type: "object", properties: {} },
       },
     ]);

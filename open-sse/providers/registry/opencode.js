@@ -18,6 +18,11 @@ export default {
       "x-opencode-client": "desktop",
     },
     noAuth: true,
+    // The Zen free tier gates on `stream:true` in the BODY (a stream:false or
+    // absent body is a 403 FreeTierError even with the bash+read tools). Clients
+    // asking for JSON still get JSON — chatCore reshapes the SSE back
+    // (handleForcedSSEToJson).
+    forceStream: true,
     quirks: {
       // Muse Spark 1.3 Free rejects any tool_choice other than "auto" with HTTP 400
       // (named function / "required" / "none"). Demoted at the Responses boundary

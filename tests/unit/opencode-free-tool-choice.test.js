@@ -15,6 +15,16 @@ const CREDS = { connectionId: "opencode-free-tool-choice-test" };
 const INPUT = [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }];
 const TOOLS = [{ type: "function", name: "get_weather", description: "w", parameters: { type: "object", properties: {} } }];
 
+// The free tier additionally requires the "bash"+"read" fingerprint stubs, which
+// the executor appends after the client's own tools (see ensureFingerprintTools).
+const STUB = (name) => ({
+  type: "function",
+  name,
+  description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
+  parameters: { type: "object", properties: {} },
+});
+const TOOLS_WITH_STUBS = [...TOOLS, STUB("bash"), STUB("read")];
+
 function responsesBody(model, toolChoice) {
   const body = { model, input: structuredClone(INPUT), tools: structuredClone(TOOLS) };
   if (toolChoice !== undefined) body.tool_choice = toolChoice;
@@ -37,7 +47,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, CREDS);
       expect(out.tool_choice).toBe("auto");
-      expect(out.tools).toEqual(TOOLS);
+      expect(out.tools).toEqual(TOOLS_WITH_STUBS);
       expect(out.input).toEqual(INPUT);
     }
   });
@@ -47,14 +57,14 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       FREE_13, responsesBody(FREE_13, "auto"), true, CREDS,
     );
     expect(autoOut.tool_choice).toBe("auto");
-    expect(autoOut.tools).toEqual(TOOLS);
+    expect(autoOut.tools).toEqual(TOOLS_WITH_STUBS);
     expect(autoOut.input).toEqual(INPUT);
 
     const absentOut = new OpenCodeExecutor().transformRequest(
       FREE_13, responsesBody(FREE_13, undefined), true, CREDS,
     );
     expect("tool_choice" in absentOut).toBe(false);
-    expect(absentOut.tools).toEqual(TOOLS);
+    expect(absentOut.tools).toEqual(TOOLS_WITH_STUBS);
     expect(absentOut.input).toEqual(INPUT);
   });
 
@@ -86,7 +96,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     const sent = JSON.parse(actualInit.body);
     expect(sent.tool_choice).toBe("auto");
     expect(sent.model).toBe(FREE_13);
-    expect(sent.tools).toEqual(TOOLS);
+    expect(sent.tools).toEqual(TOOLS_WITH_STUBS);
     expect(sent.input).toEqual(INPUT);
   });
 });

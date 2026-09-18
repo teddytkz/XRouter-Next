@@ -183,6 +183,43 @@ function normalizeResponsesTools(body) {
   }
 }
 
+// The Zen free tier rejects the request with HTTP 403 FreeTierError ("OpenCode's
+// free tier can only be used from within OpenCode") unless the body declares a
+// tool named "bash" AND a tool named "read" — exact, lowercase. Nothing else
+// gates it: no header, model, prompt or other body field matters. Verified by
+// A/B replay against /zen/v1/responses AND /zen/v1/chat/completions:
+//
+//   no tools / tools:[] / 1 tool / bash+edit / read+grep  -> 403
+//   bash+read / bash+read+anything else                   -> 200
+//
+// Clients (Claude Code, Codex, …) send capitalized Bash/Read, which do not
+// satisfy the gate, so their requests 403 even with real tools present. The
+// stubs are harmless: the model still calls the client's own tools.
+const FINGERPRINT_TOOL_NAMES = ["bash", "read"];
+const FINGERPRINT_TOOL_DESCRIPTION =
+  "Do not call this tool. It exists only for API compatibility and must never be invoked.";
+
+// Each endpoint takes a different tool shape: /responses wants the flat
+// {type,name,parameters}, /chat/completions wants the nested {type,function:{…}}
+// (a flat tool there is a 500 "Internal server error").
+function fingerprintTool(name, nested) {
+  const fn = {
+    name,
+    description: FINGERPRINT_TOOL_DESCRIPTION,
+    parameters: { type: "object", properties: {} },
+  };
+  return nested ? { type: "function", function: fn } : { type: "function", ...fn };
+}
+
+function ensureFingerprintTools(body, nested = false) {
+  if (!Array.isArray(body.tools)) body.tools = [];
+  const present = new Set(body.tools.map((tool) => tool?.name || tool?.function?.name));
+  for (const name of FINGERPRINT_TOOL_NAMES) {
+    if (present.has(name)) continue;
+    body.tools.push(fingerprintTool(name, nested));
+  }
+}
+
 // Last line of defense for native Responses clients (sourceFormat === targetFormat
 // skips translation): coerce items in place so malformed tool payloads 400 here
 // with a clear shape instead of upstream as InputValidationError.
@@ -286,7 +323,15 @@ export class OpenCodeExecutor extends BaseExecutor {
       body.stream = true;
       body.store = false;
       normalizeResponsesTools(body);
+      ensureFingerprintTools(body);
       sanitizeResponsesItems(body);
+    } else if (!isMessagesModel(effectiveModel)) {
+      // The same gate guards the free Chat Completions models (big-pickle,
+      // nemotron-*-free, …): "bash"+"read" tools AND stream:true in the body —
+      // nested tool shape here. The registry's forceStream makes chatCore
+      // reshape the SSE back to JSON for non-streaming clients.
+      body.stream = true;
+      ensureFingerprintTools(body, true);
     }
     return injectReasoningContent({ provider: this.provider, model, body });
   }
