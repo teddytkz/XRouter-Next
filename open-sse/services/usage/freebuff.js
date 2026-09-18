@@ -47,7 +47,7 @@ export async function getFreebuffUsage(accessToken, _providerSpecificData, proxy
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
-          "User-Agent": "codebuff-cli/0.0.138",
+          "User-Agent": freebuffRegistry.transport?.userAgent || "codebuff-cli/0.0.177",
           Accept: "application/json",
         },
         signal: controller.signal,

@@ -138,7 +138,7 @@ const OAUTH_TEST_CONFIG = {
     authPrefix: "Bearer ",
     extraHeaders: {
       Accept: "application/json",
-      "User-Agent": "codebuff-cli/0.0.138",
+      "User-Agent": PROVIDERS.freebuff.userAgent,
     },
     acceptStatuses: [403, 404],
     softFailMessage: {

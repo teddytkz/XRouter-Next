@@ -44,6 +44,9 @@ const freebuffRegistry = {
   transport: {
     baseUrl: "https://www.codebuff.com/api/v1/chat/completions",
     format: "openai",
+    // Mirrors the official CLI's User-Agent on every request (login, session,
+    // run, completions). Kept in one place because it's sent from four sites.
+    userAgent: "codebuff-cli/0.0.177",
     headers: {
       "User-Agent": "ai-sdk/openai-compatible/1.0/codebuff",
     },

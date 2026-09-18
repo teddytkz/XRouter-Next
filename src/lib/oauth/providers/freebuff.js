@@ -1,5 +1,8 @@
-import crypto from "node:crypto";
 import { FREEBUFF_CONFIG } from "../constants/oauth.js";
+import { getFreebuffFingerprintId } from "../freebuffFingerprint.js";
+import { PROVIDERS } from "open-sse/config/providers.js";
+
+const FREEBUFF_USER_AGENT = PROVIDERS.freebuff.userAgent;
 
 /**
  * Freebuff / Codebuff CLI login (fingerprint device-flow — NOT OAuth2):
@@ -29,7 +32,10 @@ const freebuff = {
   config: FREEBUFF_CONFIG,
   flowType: "device_code",
   requestDeviceCode: async (config) => {
-    const fingerprintId = crypto.randomUUID();
+    // Machine fingerprint (see freebuffFingerprint.js): the backend keys
+    // multi-account detection on this, so it must be stable per machine, not
+    // a fresh uuid per login attempt.
+    const fingerprintId = await getFreebuffFingerprintId();
     const baseUrl = (config.baseUrl || LOGIN_HOST).replace(/\/$/, "");
     const response = await fetch(
       `${baseUrl}${config.loginCodePath || "/api/auth/cli/code"}`,
@@ -38,7 +44,7 @@ const freebuff = {
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          "User-Agent": "codebuff-cli/0.0.138",
+          "User-Agent": FREEBUFF_USER_AGENT,
         },
         body: JSON.stringify({ fingerprintId }),
       },
@@ -99,7 +105,7 @@ const freebuff = {
         method: "GET",
         headers: {
           Accept: "application/json",
-          "User-Agent": "codebuff-cli/0.0.138",
+          "User-Agent": FREEBUFF_USER_AGENT,
         },
       },
     );

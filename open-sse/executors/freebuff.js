@@ -32,6 +32,7 @@ import { markPoolUnfit, clearPoolUnfit } from "../services/proxyPoolFitness.js";
  * claims a row (bound to one model, ~1h); its instance id must ride along as
  * codebuff_metadata.freebuff_instance_id.
  */
+const FREEBUFF_USER_AGENT = PROVIDERS.freebuff.userAgent;
 const SESSION_PATH = "/api/v1/freebuff/session";
 const RUN_PATH = "/api/v1/agent-runs";
 const SESSION_DEFAULT_TTL_MS = 60 * 60 * 1000;
@@ -219,7 +220,7 @@ async function requestSession(token, model, proxyOptions) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": "codebuff-cli/0.0.138",
+      "User-Agent": FREEBUFF_USER_AGENT,
       "x-freebuff-model": model,
     },
   }, proxyOptions);
@@ -295,7 +296,7 @@ async function startRun(token, model, proxyOptions) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
-      "User-Agent": "codebuff-cli/0.0.138",
+      "User-Agent": FREEBUFF_USER_AGENT,
     },
     body: JSON.stringify({
       action: "START",
@@ -332,7 +333,7 @@ async function finishRun(token, runId, status, proxyOptions) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
-        "User-Agent": "codebuff-cli/0.0.138",
+        "User-Agent": FREEBUFF_USER_AGENT,
       },
       body: JSON.stringify({ action: "FINISH", runId, status }),
       signal: AbortSignal.timeout(10_000),
@@ -401,10 +402,11 @@ export class FreebuffExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
+    // The CLI sends a random 8-char promptId as client_id (sdk/src/run.ts) —
+    // never the login fingerprint. This builder runs per-attempt via buildBody,
+    // so this rotates per attempt too; upstream does the same per message.
     body.codebuff_metadata = {
-      client_id:
-        credentials?.providerSpecificData?.fingerprintId ||
-        `9router-${crypto.randomUUID()}`,
+      client_id: Math.random().toString(36).substring(2, 10),
       cost_mode: "free",
     };
     body.provider = { allow_fallbacks: false };
