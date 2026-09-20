@@ -21,6 +21,7 @@ const MAX_SESSION_LENGTH = 256;
 const MAX_TOOL_NAME_LEN = 128;
 const SESSION_HEADER = "x-opencode-session";
 const SESSION_FIELD = "_opencodeSession";
+const REQ_FIELD = "_opencodeRequest";
 
 // Canonical OpenCode identifiers: 30 chars total.
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
@@ -76,6 +77,62 @@ export function generateSessionId(timestamp = Date.now()) {
 export function generateRequestId(timestamp = Date.now()) {
   const current = BigInt(timestamp) * 0x1000n + 1n;
   return `msg_${hex48(current)}${unstableRandom()}`;
+}
+
+function lastUserText(body) {
+  try {
+    if (!body || typeof body !== "object") return "";
+    const arr = Array.isArray(body.messages) ? body.messages : Array.isArray(body.input) ? body.input : null;
+    if (!arr) return typeof body.input === "string" ? body.input.slice(-600) : "";
+    for (let i = arr.length - 1; i >= 0; i--) {
+      const msg = arr[i];
+      if (!msg || (msg.role && msg.role !== "user")) continue;
+      const content = msg.content;
+      if (typeof content === "string" && content.trim()) return content.trim().slice(-600);
+      if (Array.isArray(content)) {
+        const text = content
+          .map((part) => (typeof part === "string" ? part : part?.text || part?.input_text || ""))
+          .join(" ")
+          .trim();
+        if (text) return text.slice(-600);
+      }
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+// The real CLI sends the current user message id (stable per turn, same on
+// retries) as x-opencode-request. Derive it from session + last user message so
+// retries share the id instead of minting a fresh one every attempt.
+export function deriveRequestId(sessionId, body) {
+  const text = lastUserText(body);
+  if (!text) return generateRequestId();
+  const digest = crypto
+    .createHash("sha256")
+    .update(`opencode-req\0${sessionId || ""}\0${text}`)
+    .digest();
+  const timeHex = digest.subarray(0, 6).toString("hex");
+  let randomPart = "";
+  for (let i = 6; i < 20; i++) randomPart += BASE62_CHARS[digest[i] % 62];
+  const id = `msg_${timeHex}${randomPart}`;
+  return OPENCODE_REQUEST_RE.test(id) ? id : generateRequestId();
+}
+
+function normalizeRequestId(value) {
+  const normalized = normalizeSession(value);
+  return normalized && OPENCODE_REQUEST_RE.test(normalized) ? normalized : null;
+}
+
+function resolveOpencodeRequestId(body, credentials, sessionId) {
+  for (const [key, value] of Object.entries(credentials?.rawHeaders || {})) {
+    if (key.toLowerCase() !== "x-opencode-request") continue;
+    const normalized = normalizeRequestId(value);
+    if (normalized) return normalized;
+    break;
+  }
+  return deriveRequestId(sessionId, body);
 }
 
 // Deterministically map foreign session identities (claude:<uuid>, antigravity:…,
@@ -289,6 +346,7 @@ export class OpenCodeExecutor extends BaseExecutor {
     return {
       ...sourceCredentials,
       [SESSION_FIELD]: resolved,
+      [REQ_FIELD]: resolveOpencodeRequestId(body, sourceCredentials, resolved),
     };
   }
 
@@ -352,7 +410,9 @@ export class OpenCodeExecutor extends BaseExecutor {
     const isOpencodeDownstream = hasValidOpencodeVersion(downstreamUa);
     const session = credentials?.[SESSION_FIELD]
       || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
-    const incomingRequest = normalizeSession(lower["x-opencode-request"]);
+    const requestId = credentials?.[REQ_FIELD]
+      || normalizeRequestId(lower["x-opencode-request"])
+      || generateRequestId();
 
     const headers = {
       "Content-Type": "application/json",
@@ -360,9 +420,7 @@ export class OpenCodeExecutor extends BaseExecutor {
       "User-Agent": isOpencodeDownstream ? downstreamUa : OPENCODE_UA,
       "x-opencode-client": lower["x-opencode-client"] || "desktop",
       "x-opencode-session": session,
-      "x-opencode-request": OPENCODE_REQUEST_RE.test(incomingRequest || "")
-        ? incomingRequest
-        : generateRequestId(),
+      "x-opencode-request": requestId,
       "x-opencode-project": lower["x-opencode-project"] || "global",
       "Accept": stream ? "text/event-stream" : "*/*",
     };
