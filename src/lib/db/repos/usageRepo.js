@@ -60,6 +60,20 @@ function addToCounter(target, key, values) {
   if (values.meta) Object.assign(target[key], values.meta);
 }
 
+// Single source of truth for where an entry lands in the daily aggregate.
+// recalculateCosts walks the same list to shift costs by bucket, so a new
+// breakdown only has to be added here.
+function bucketKeys(entry) {
+  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
+  return [
+    ["byProvider", entry.provider, null],
+    ["byModel", entry.provider ? `${entry.model}|${entry.provider}` : entry.model, { rawModel: entry.model, provider: entry.provider }],
+    ["byAccount", entry.connectionId, { rawModel: entry.model, provider: entry.provider }],
+    ["byApiKey", `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`, { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null }],
+    ["byEndpoint", `${entry.endpoint || "Unknown"}|${entry.model}|${entry.provider || "unknown"}`, { endpoint: entry.endpoint || "Unknown", rawModel: entry.model, provider: entry.provider }],
+  ];
+}
+
 function aggregateEntryToDay(day, entry) {
   const promptTokens = entry.tokens?.prompt_tokens || entry.tokens?.input_tokens || 0;
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
@@ -79,22 +93,10 @@ function aggregateEntryToDay(day, entry) {
   day.byApiKey ||= {};
   day.byEndpoint ||= {};
 
-  if (entry.provider) addToCounter(day.byProvider, entry.provider, vals);
-
-  const modelKey = entry.provider ? `${entry.model}|${entry.provider}` : entry.model;
-  addToCounter(day.byModel, modelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
-
-  if (entry.connectionId) {
-    addToCounter(day.byAccount, entry.connectionId, { ...vals, meta: { rawModel: entry.model, provider: entry.provider } });
+  for (const [bucket, key, meta] of bucketKeys(entry)) {
+    if (!key) continue;
+    addToCounter(day[bucket], key, meta ? { ...vals, meta } : vals);
   }
-
-  const apiKeyVal = entry.apiKey && typeof entry.apiKey === "string" ? entry.apiKey : "local-no-key";
-  const akModelKey = `${apiKeyVal}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byApiKey, akModelKey, { ...vals, meta: { rawModel: entry.model, provider: entry.provider, apiKey: entry.apiKey || null } });
-
-  const endpoint = entry.endpoint || "Unknown";
-  const epKey = `${endpoint}|${entry.model}|${entry.provider || "unknown"}`;
-  addToCounter(day.byEndpoint, epKey, { ...vals, meta: { endpoint, rawModel: entry.model, provider: entry.provider } });
 }
 
 function pushToRing(entry) {
@@ -136,21 +138,27 @@ async function ensureRingInitialized() {
   } catch {}
 }
 
-async function calculateCost(provider, model, tokens) {
-  if (!tokens || !provider || !model) return 0;
+// Returns null when the model cannot be priced (unknown model, or the math came
+// out non-finite). Callers must NOT read null as $0: saveRequestUsage stores 0
+// for a brand-new row (nothing better is known yet, and the cost is recomputable
+// later), but recalculateCosts SKIPS the row — overwriting a real historical
+// cost with 0 because a model is missing from the table loses money data.
+async function calculateCost(provider, model, tokens, at) {
+  if (!tokens || !provider || !model) return null;
   try {
     const { getPricingForModel } = await import("./pricingRepo.js");
     const pricing = await getPricingForModel(provider, model);
-    if (!pricing) return 0;
+    if (!pricing) return null;
 
     // Delegate the actual math to the single source of truth (avoids the two
     // copies drifting apart — see open-sse/providers/pricing.js for the
     // cache-inclusive prompt_tokens convention this assumes).
     const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
-    return calculateCostFromTokens(tokens, pricing);
+    const cost = calculateCostFromTokens(tokens, pricing, at ? new Date(at) : new Date());
+    return Number.isFinite(cost) ? cost : null;
   } catch (e) {
     console.error("Error calculating cost:", e);
-    return 0;
+    return null;
   }
 }
 
@@ -279,7 +287,9 @@ export async function saveRequestUsage(entry) {
     const db = await getAdapter();
 
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
-    entry.cost = await calculateCost(entry.provider, entry.model, entry.tokens);
+    // Unpriceable model → 0 for a fresh row (the row is still worth keeping, and
+    // recalculateCosts can price it later). Never let NaN reach the REAL column.
+    entry.cost = (await calculateCost(entry.provider, entry.model, entry.tokens, entry.timestamp)) ?? 0;
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
@@ -365,6 +375,117 @@ export async function saveRequestUsage(entry) {
   } catch (e) {
     console.error("Failed to save usage stats:", e);
   }
+}
+
+/**
+ * Recompute stored cost for every row in usageHistory with the pricing that is
+ * in effect NOW, then shift usageDaily by the per-day delta.
+ *
+ * Delta, not rebuild: usageDaily can hold days that have no usageHistory rows
+ * (legacy `dailySummary` import, plus any history pruned upstream), so
+ * re-deriving it from history alone would silently drop those days. Token
+ * counts are never touched — only `cost` moves.
+ *
+ * Time-of-day rules are evaluated against each row's own timestamp, so a
+ * 01:00–12:00 window applies to the rows that actually ran in that window.
+ *
+ * @returns {Promise<{rows:number, changed:number, days:number, delta:number}>}
+ */
+export async function recalculateCosts() {
+  const db = await getAdapter();
+  const rows = db.all(
+    `SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, tokens, cost
+     FROM usageHistory ORDER BY id ASC`
+  );
+
+  const updates = [];
+  // dateKey → { total, buckets: { bucket → { key → delta } } }
+  const perDay = new Map();
+  let changed = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const tokens = parseJson(row.tokens, {}) || {};
+    const next = await calculateCost(row.provider, row.model, tokens, row.timestamp);
+    // Unpriceable (unknown model / non-finite math) → leave the stored cost
+    // ALONE. Writing 0 here would erase real spend for every model the pricing
+    // tables don't cover.
+    if (next === null) { skipped += 1; continue; }
+
+    const prev = row.cost || 0;
+    const diff = next - prev;
+    if (Math.abs(diff) < 1e-12) continue;
+
+    updates.push([next, row.id]);
+    changed += 1;
+
+    const dateKey = getLocalDateKey(row.timestamp);
+    let day = perDay.get(dateKey);
+    if (!day) { day = { total: 0, buckets: {} }; perDay.set(dateKey, day); }
+    day.total += diff;
+
+    for (const [bucket, key] of bucketKeys(row)) {
+      if (!key) continue;
+      day.buckets[bucket] ||= {};
+      day.buckets[bucket][key] = (day.buckets[bucket][key] || 0) + diff;
+    }
+  }
+
+  let delta = 0;
+  db.transaction(() => {
+    for (const [cost, id] of updates) {
+      db.run(`UPDATE usageHistory SET cost = ? WHERE id = ?`, [cost, id]);
+    }
+
+    for (const [dateKey, dayDelta] of perDay) {
+      const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
+      if (!row) continue; // no aggregate for that day — nothing to shift
+      const day = parseJson(row.data, {}) || {};
+
+      // Buckets may be missing from a legacy/imported day — create them so every
+      // diff lands somewhere. Skipping them moved day.cost while its breakdowns
+      // stayed put, which breaks `day.cost == Σ buckets`.
+      for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
+        day[bucket] ||= {};
+        for (const key of Object.keys(keys)) {
+          day[bucket][key] ||= { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0 };
+        }
+      }
+
+      // Shift every figure by the same factor so none goes negative AND the
+      // day-total/breakdown identity survives. Clamping day.cost and each bucket
+      // independently (the old behaviour) let them disagree.
+      // `factor` only shrinks when a stored figure is already negative (corrupt
+      // legacy row) — then the day is left untouched rather than half-applied.
+      let factor = 1;
+      if (dayDelta.total < 0) {
+        let headroom = Math.max(0, day.cost || 0);
+        for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
+          for (const [key, diff] of Object.entries(keys)) {
+            if (diff < 0) headroom = Math.min(headroom, Math.max(0, day[bucket][key].cost || 0));
+          }
+        }
+        factor = Math.min(1, headroom / -dayDelta.total);
+      }
+
+      day.cost = (day.cost || 0) + dayDelta.total * factor;
+      for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
+        for (const [key, diff] of Object.entries(keys)) {
+          day[bucket][key].cost = (day[bucket][key].cost || 0) + diff * factor;
+        }
+      }
+
+      db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), dateKey]);
+      delta += dayDelta.total * factor;
+    }
+  });
+
+  // The ring buffer caches copies of the last 50 rows (with their old cost) —
+  // drop it so the next read reloads from usageHistory.
+  if (updates.length) recentRing.initialized = false;
+
+  scheduleStatsEvent("update", 250);
+  return { rows: rows.length, changed, skipped, days: perDay.size, delta };
 }
 
 export async function getUsageHistory(filter = {}) {

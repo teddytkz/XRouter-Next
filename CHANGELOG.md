@@ -27,6 +27,18 @@
 - **Auth**: set a 24h `maxAge` on the dashboard session cookie
 
 ## Fork-local (XRouter-Next)
+- **Pricing**: add a per-model price editor on the provider page — click the tag icon on any model row to set $/1M rates and **time-of-day rules** (e.g. `01:00–12:00` at $0.10), evaluated against each request's own timestamp
+- **Pricing**: add a **Pricing** page (`/dashboard/pricing`, sidebar under CLI Tools) — every provider's every model with the rates in effect; models with a schedule show a separate **peak** row under their normal rate (DeepSeek peak = `01:00–04:00` + `06:00–10:00` UTC Mon–Fri, off-peak at half price)
+- **Pricing**: time-of-day rules accept `tz` (IANA zone) and `days` (weekday filter) so schedules published in UTC bill the right hours on any host; both are validated at the API boundary
+- **Usage**: add a **Recalculate costs** action on `/dashboard/usage` — recomputes every stored request's cost from the pricing currently in effect and shifts the daily aggregates by the same delta (tokens untouched, legacy days preserved)
+- **Pricing fix**: `PROVIDER_PRICING.gh` was keyed by UI alias while runtime resolves the provider id (`github`), so that override never applied
+- **Pricing fix**: partial user overrides were returned unmerged, leaving unset rates `undefined` and the computed cost `NaN`. `getPricingForModel` now merges over a **complete** base (missing fields default to `0`), so a partial override can never produce a `null`/NaN cost
+- **Pricing fix**: an explicit `0` rate (e.g. `z-ai/glm-5.3-free`) was treated as "unset" and fell back to the full input rate; the cost math now uses `??` for `cached`/`reasoning`/`cache_creation`
+- **Pricing fix**: `Recalculate costs` could **overwrite real historical cost with 0** for any model missing from the pricing tables. It now skips rows it cannot price and reports the count (`skipped`) instead of zeroing them
+- **Pricing fix**: a downward recalc clamped `day.cost` and each bucket independently, so the day total no longer equalled the sum of its breakdowns. Every figure is now shifted by one shared factor, which preserves the identity and still cannot go negative
+- **Pricing fix**: recalc now creates daily buckets that a legacy/imported day is missing, instead of silently dropping their share of the delta
+- **Pricing fix**: `PATCH /api/pricing` accepted `Infinity` (JSON-round-trips to `null`) — validation now uses `Number.isFinite`; time windows are limited to `00:00–23:59` (plus `24:00` as an end-of-day bound) and are no longer silently wrapped modulo 24h
+- **Pricing change**: time-of-day windows are now evaluated in **UTC** by default instead of server local time (a rule may still pin its own `tz`). Every schedule we model is published in UTC, so a host in e.g. WIB no longer bills DeepSeek peak at the wrong hours, and a rule typed in the UI means the same thing on every machine
 - **Cline**: add 6 free tier models without ClinePass requirement — `cline-free/muse-spark-1.3-contributor`, `deepseek/deepseek-v4-flash`, `z-ai/glm-5.3-flash`, `cline-free/solar-pro4`, `cline-free/longcat-2.0`, `poolside/laguna-s-2.1:free` with $0 billing and separate quota limits
 - **Cline**: add `authModes`, `hasOAuth`, `authHint`, `preserveHookAuth` to provider config; sync OAuth token/refresh URLs on ClinePass
 - **Docs**: add comprehensive Cline free tier setup guide at `docs/CLINE-FREE-GUIDE.md`

@@ -48,12 +48,27 @@ export async function getPricing() {
   return merged;
 }
 
+// User overrides may be partial (e.g. only `input`, or only `rules`), so they are
+// merged OVER the resolved base rates — returning the raw override would leave
+// the untouched fields undefined and turn the cost into NaN.
+//
+// The merge is over a COMPLETE base: when the provider table has no entry for
+// this model either, the missing rate fields default to 0. A `undefined` rate
+// would propagate NaN through calculateCostFromTokens into a `null`/NaN cost
+// that the daily aggregate then reads as $0 for the whole day.
+const RATE_FIELDS = ["input", "output", "cached", "reasoning", "cache_creation"];
+const ZERO_RATES = Object.fromEntries(RATE_FIELDS.map((f) => [f, 0]));
+
 export async function getPricingForModel(provider, model) {
   if (!model) return null;
-  const userPricing = await getUserPricing();
-  if (provider && userPricing[provider]?.[model]) return userPricing[provider][model];
   const { getPricingForModel: resolveConst } = await import("open-sse/providers/pricing.js");
-  return resolveConst(provider, model);
+  const base = resolveConst(provider, model);
+  const userPricing = await getUserPricing();
+  const override = provider ? userPricing[provider]?.[model] : null;
+  if (!override) return base;
+  // Plain spread: an override that omits `rules` keeps the base schedule, an
+  // explicit `rules: []` clears it. The editor always sends the array it shows.
+  return { ...ZERO_RATES, ...base, ...override };
 }
 
 // Atomic merge inside transaction (per-provider read-modify-write)

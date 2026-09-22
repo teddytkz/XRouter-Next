@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, Card } from "@/shared/components";
+import { UsageStats, RequestLogger, CardSkeleton, SegmentedControl, Card, Button } from "@/shared/components";
 import RequestDetailsTab from "./components/RequestDetailsTab";
 
 const PERIODS = [
@@ -32,6 +32,7 @@ function UsageContent() {
   const router = useRouter();
 
   const [period, setPeriod] = useState(searchParams.get("period") || "today");
+  const [recalculating, setRecalculating] = useState(false);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -52,6 +53,38 @@ function UsageContent() {
     router.push(`/dashboard/usage?${params.toString()}`, { scroll: false });
   };
 
+  const handleRecalculate = async () => {
+    if (!confirm(
+      "Recompute the cost of every stored request with the pricing currently in effect?\n\n" +
+      "This rewrites historical cost figures (including past months). Token counts are not changed."
+    )) return;
+
+    setRecalculating(true);
+    try {
+      const res = await fetch("/api/usage/recalculate", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to recalculate costs");
+        return;
+      }
+      const delta = Number.isFinite(data.delta) ? data.delta : 0;
+      alert(
+        `Recomputed ${data.rows} requests — ${data.changed} changed across ${data.days} day(s).\n` +
+        (data.skipped > 0
+          ? `${data.skipped} left unchanged (no pricing for that model).\n`
+          : "") +
+        `Total cost delta: ${delta < 0 ? "−" : "+"}$${Math.abs(delta).toFixed(4)}`
+      );
+      // UsageStats only refetches on a period change and the SSE stream carries
+      // realtime fields only, so a full reload is what actually re-reads costs.
+      window.location.reload();
+    } catch {
+      alert("Failed to recalculate costs");
+    } finally {
+      setRecalculating(false);
+    }
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       {/* Period Selector */}
@@ -67,6 +100,18 @@ function UsageContent() {
             onChange={handlePeriodChange}
             size="sm"
           />
+          <Button
+            size="sm"
+            variant="secondary"
+            icon="calculate"
+            onClick={handleRecalculate}
+            loading={recalculating}
+            disabled={recalculating}
+            className="sm:ml-auto"
+            title="Recompute all stored costs with the pricing currently in effect"
+          >
+            Recalculate costs
+          </Button>
         </div>
       </Card>
 

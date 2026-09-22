@@ -145,12 +145,37 @@ export const MODEL_PRICING = {
 /**
  * Provider-specific pricing overrides.
  * Only include entries where price DIFFERS from MODEL_PRICING.
- * Keyed by provider alias (cc, cx, gc, gh, ...) or provider id (openai, anthropic, ...).
+ * Keyed by provider ID (openai, anthropic, github, tokenrouter, ...), NOT by the
+ * short UI alias (gh, cc, cx): cost calc resolves the id before looking up here.
  */
 export const PROVIDER_PRICING = {
-  // GitHub Copilot (gh) — explicit override, matches canonical gpt-5.3-codex rate
-  gh: {
+  // GitHub Copilot — keyed by provider ID ("github"), not the UI alias ("gh"):
+  // runtime cost calc passes the resolved registry id, so an alias key never matches.
+  github: {
     "gpt-5.3-codex": { input: 1.75, output: 14.00, cached: 0.175, reasoning: 14.00, cache_creation: 1.75 },
+  },
+  // DeepSeek — peak/off-peak billing, https://api-docs.deepseek.com/quick_start/pricing
+  // Peak = 01:00–04:00 and 06:00–10:00 UTC, Mon–Fri (Chinese public holidays count as
+  // off-peak and are not modelled). Off-peak is exactly half of peak, so `input`/etc.
+  // below are the OFF-PEAK (base) rates and the `rules` carry the peak window.
+  // `days` matters: without it the window would apply on weekends too. `tz` is
+  // redundant now that rules default to UTC, but is kept explicit so the schedule
+  // still reads correctly if that default ever changes.
+  deepseek: {
+    "deepseek-v4-pro": {
+      input: 0.66, output: 1.98, cached: 0.022, reasoning: 1.98,
+      rules: [
+        { from: "01:00", to: "04:00", tz: "UTC", days: [1, 2, 3, 4, 5], input: 1.32, output: 3.96, cached: 0.044, reasoning: 3.96 },
+        { from: "06:00", to: "10:00", tz: "UTC", days: [1, 2, 3, 4, 5], input: 1.32, output: 3.96, cached: 0.044, reasoning: 3.96 },
+      ],
+    },
+    "deepseek-v4.1-flash": {
+      input: 0.15, output: 0.60, cached: 0.003, reasoning: 0.60,
+      rules: [
+        { from: "01:00", to: "04:00", tz: "UTC", days: [1, 2, 3, 4, 5], input: 0.30, output: 1.20, cached: 0.006, reasoning: 1.20 },
+        { from: "06:00", to: "10:00", tz: "UTC", days: [1, 2, 3, 4, 5], input: 0.30, output: 1.20, cached: 0.006, reasoning: 1.20 },
+      ],
+    },
   },
   // TokenRouter — exact rates from https://api.tokenrouter.com/api/pricing ($1/1M tokens).
   // Ratio→USD: input = model_ratio×2, output = model_ratio×completion_ratio×2.
@@ -402,6 +427,86 @@ export function getDefaultPricing() {
 }
 
 /**
+ * Parse "HH:MM" (or "HH") into minutes-since-midnight, or null when malformed.
+ * `24:00` is accepted as an end-of-day bound (1440); no other 24:xx form is,
+ * and nothing is masked modulo a day — a wrapped value would silently move a
+ * window to a different hour.
+ */
+function minutesOfDay(hhmm) {
+  const [h, m = "0"] = String(hhmm ?? "").split(":");
+  const hh = Number(h);
+  const mm = Number(m);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm) || hh < 0 || hh > 24 || mm < 0 || mm > 59) return null;
+  if (hh === 24 && mm !== 0) return null;
+  return hh * 60 + mm;
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/**
+ * Clock time + weekday of `at` as seen in `tz` (IANA zone, e.g. "UTC").
+ *
+ * Defaults to **UTC**, not the server's local time: every peak/off-peak schedule
+ * we model is published in UTC, and a rule typed in the UI must not bill
+ * different hours depending on where the host happens to be. An explicit `tz` on
+ * the rule overrides it; an unparseable one falls back to UTC rather than local.
+ */
+function clockInZone(at, tz) {
+  const utc = () => ({ minutes: at.getUTCHours() * 60 + at.getUTCMinutes(), day: at.getUTCDay() });
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz || "UTC", hour: "2-digit", minute: "2-digit", weekday: "short", hour12: false,
+    }).formatToParts(at);
+    const get = (t) => parts.find((p) => p.type === t)?.value;
+    const day = WEEKDAYS.indexOf(get("weekday"));
+    // "24" shows up for midnight in some ICU builds; normalise it to 0.
+    const minutes = (Number(get("hour")) % 24) * 60 + Number(get("minute"));
+    if (!Number.isFinite(minutes) || day === -1) return utc();
+    return { minutes, day };
+  } catch {
+    return utc();
+  }
+}
+
+/**
+ * First time-of-day rule whose window contains `at`, or null.
+ * Rule shape: { from: "01:00", to: "12:00", input, output, ... } — window is
+ * start-inclusive / end-exclusive; from > to wraps midnight.
+ *
+ * Windows are evaluated in **UTC** unless the rule carries its own `tz` (IANA
+ * zone) — every schedule we model is published in UTC, so the host's own
+ * timezone must never shift which hours get billed.
+ * Optional `days` ([0=Sun … 6=Sat]) restricts the rule to those weekdays.
+ */
+export function activeTimeRule(pricing, at = new Date()) {
+  const rules = pricing?.rules;
+  if (!Array.isArray(rules) || rules.length === 0) return null;
+  for (const rule of rules) {
+    const from = minutesOfDay(rule.from);
+    const to = minutesOfDay(rule.to);
+    if (from === null || to === null) continue;
+    const { minutes: now, day } = clockInZone(at, rule.tz);
+    if (Array.isArray(rule.days) && rule.days.length > 0 && !rule.days.includes(day)) continue;
+    const inWindow = from <= to ? now >= from && now < to : now >= from || now < to;
+    if (inWindow) return rule;
+  }
+  return null;
+}
+
+/**
+ * Merge the active time rule's rates over the base rates. Returns the input
+ * object unchanged when no rule matches (or when there are no rules).
+ */
+export function applyTimeRules(pricing, at = new Date()) {
+  if (!pricing) return pricing;
+  const rule = activeTimeRule(pricing, at);
+  if (!rule) return pricing;
+  // Drop the window metadata — only the rate fields override the base.
+  const { from, to, tz, days, ...rates } = rule;
+  return { ...pricing, ...rates };
+}
+
+/**
  * Format cost for display
  * @param {number} cost
  * @returns {string}
@@ -414,12 +519,14 @@ export function formatCost(cost) {
 /**
  * Calculate cost from tokens and pricing
  * @param {object} tokens
- * @param {object} pricing
+ * @param {object} pricing - base rates; may carry `rules` (see applyTimeRules)
+ * @param {Date} [at] - request time, defaults to now
  * @returns {number} cost in dollars
  */
-export function calculateCostFromTokens(tokens, pricing) {
+export function calculateCostFromTokens(tokens, pricing, at = new Date()) {
   if (!tokens || !pricing) return 0;
 
+  pricing = applyTimeRules(pricing, at);
   let cost = 0;
 
   const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
@@ -431,8 +538,10 @@ export function calculateCostFromTokens(tokens, pricing) {
 
   cost += nonCachedInput * (pricing.input / 1000000);
 
+  // `??`, not `||`: an explicit 0 rate means "this token class is free" (e.g.
+  // z-ai/glm-5.3-free) and must not fall back to the full input rate.
   if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached || pricing.input) / 1000000);
+    cost += cachedTokens * ((pricing.cached ?? pricing.input) / 1000000);
   }
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
@@ -440,11 +549,11 @@ export function calculateCostFromTokens(tokens, pricing) {
 
   const reasoningTokens = tokens.reasoning_tokens || 0;
   if (reasoningTokens > 0) {
-    cost += reasoningTokens * ((pricing.reasoning || pricing.output) / 1000000);
+    cost += reasoningTokens * ((pricing.reasoning ?? pricing.output) / 1000000);
   }
 
   if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation || pricing.input) / 1000000);
+    cost += cacheCreationTokens * ((pricing.cache_creation ?? pricing.input) / 1000000);
   }
 
   return cost;

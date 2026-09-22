@@ -134,6 +134,13 @@ const getPageInfo = (pathname) => {
       icon: "terminal",
       breadcrumbs: [],
     };
+  if (pathname.includes("/pricing"))
+    return {
+      title: "Pricing",
+      description: "Price per 1M tokens for every model, including peak-rate schedules",
+      icon: "sell",
+      breadcrumbs: [],
+    };
   if (pathname.includes("/proxy-pools"))
     return {
       title: "Proxy Pools",

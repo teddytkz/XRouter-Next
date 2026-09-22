@@ -363,8 +363,14 @@ describe("DB SQLite layer — public API parity", () => {
     const p = await sqliteDb.getPricing();
     expect(p.openai["gpt-test"]).toEqual({ input: 1, output: 2 });
 
+    // getPricingForModel resolves a COMPLETE rate set: an unknown model with a
+    // partial override gets 0 (not undefined) for the fields nobody set, so the
+    // cost math can never produce NaN.
     const single = await sqliteDb.getPricingForModel("openai", "gpt-test");
-    expect(single).toEqual({ input: 1, output: 2 });
+    expect(single).toMatchObject({ input: 1, output: 2 });
+    for (const field of ["cached", "reasoning", "cache_creation"]) {
+      expect(typeof single[field]).toBe("number");
+    }
 
     await sqliteDb.resetPricing("openai", "gpt-test");
     expect((await sqliteDb.getPricing()).openai?.["gpt-test"]).toBeUndefined();

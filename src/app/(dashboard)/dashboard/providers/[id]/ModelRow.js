@@ -1,7 +1,7 @@
 import PropTypes from "prop-types";
 import { CapacityBadges } from "@/shared/components";
 
-export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, caps, thinkingSuffix }) {
+export default function ModelRow({ model, fullModel, alias, copied, onCopy, testStatus, isCustom, isFree, onDeleteAlias, onTest, isTesting, onDisable, onPricing, hasPricing, caps, thinkingSuffix }) {
   const displayModel = thinkingSuffix ? `${fullModel}(${thinkingSuffix})` : fullModel;
   const borderColor = testStatus === "ok"
     ? "border-green-500/40"
@@ -60,6 +60,19 @@ export default function ModelRow({ model, fullModel, alias, copied, onCopy, test
             {copied === `model-${model.id}` ? "Copied!" : "Copy"}
           </span>
         </div>
+        {onPricing && (
+          <div className="relative shrink-0 group/btn">
+            <button
+              onClick={onPricing}
+              className={`rounded p-0.5 transition-opacity hover:bg-sidebar hover:text-primary ${hasPricing ? "text-primary opacity-100" : "text-text-muted opacity-100 sm:opacity-0 sm:group-hover:opacity-100"}`}
+            >
+              <span className="material-symbols-outlined text-sm">sell</span>
+            </button>
+            <span className="pointer-events-none absolute mt-1 top-5 left-1/2 -translate-x-1/2 text-[10px] text-text-muted whitespace-nowrap opacity-0 group-hover/btn:opacity-100 transition-opacity">
+              {hasPricing ? "Pricing (custom)" : "Set pricing"}
+            </span>
+          </div>
+        )}
         {isCustom ? (
           <button
             onClick={onDeleteAlias}
@@ -97,6 +110,8 @@ ModelRow.propTypes = {
   onTest: PropTypes.func,
   isTesting: PropTypes.bool,
   onDisable: PropTypes.func,
+  onPricing: PropTypes.func,
+  hasPricing: PropTypes.bool,
   caps: PropTypes.object,
   thinkingSuffix: PropTypes.string,
 };
