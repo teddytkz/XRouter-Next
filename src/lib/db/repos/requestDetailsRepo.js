@@ -57,6 +57,10 @@ async function getObservabilityConfig() {
 let writeBuffer = [];
 let flushTimer = null;
 let isFlushing = false;
+// Bumped by clearRequestDetails(). A flush that has already spliced its items
+// into a local array re-checks this before inserting, so rows deleted while the
+// flush was awaiting are not resurrected by its pending insert.
+let clearEpoch = 0;
 
 function sanitizeHeaders(headers) {
   if (!headers || typeof headers !== "object") return {};
@@ -93,8 +97,13 @@ async function flushToDatabase() {
     // Drain entire buffer (loop in case more pushed during await)
     while (writeBuffer.length > 0) {
       const items = writeBuffer.splice(0, writeBuffer.length);
+      const epoch = clearEpoch;
       const db = await getAdapter();
       const config = await getObservabilityConfig();
+      // A reset may have landed while we were awaiting the adapter/config —
+      // these items were deleted from under us, so drop them instead of
+      // re-inserting them into the now-empty table.
+      if (epoch !== clearEpoch) continue;
 
       db.transaction(() => {
         for (const item of items) {
@@ -157,6 +166,23 @@ export async function saveRequestDetail(detail) {
       flushToDatabase().catch(() => {});
     }, config.flushIntervalMs);
   }
+}
+
+export async function clearRequestDetails() {
+  // Drop the buffer AND bump the epoch: rows pushed since the last flush would
+  // otherwise be re-inserted right after the table is cleared, and a flush
+  // already awaiting its adapter would re-insert its spliced batch (see
+  // flushToDatabase's epoch guard).
+  clearEpoch++;
+  if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+  // Rows still buffered are deleted too (by never being written), so count them
+  // — otherwise the reported total is short by up to a batch.
+  const buffered = writeBuffer.length;
+  writeBuffer.length = 0;
+  const db = await getAdapter();
+  const n = db.get(`SELECT COUNT(*) as c FROM requestDetails`)?.c || 0;
+  db.run(`DELETE FROM requestDetails`);
+  return n + buffered;
 }
 
 export async function getRequestDetails(filter = {}) {

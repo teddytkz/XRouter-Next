@@ -641,6 +641,60 @@ export async function recalculateCosts() {
   return { rows: rows.length, changed, skipped, days: perDay.size, delta };
 }
 
+/**
+ * Wipe all usage data: per-request history, daily aggregates, and the
+ * observability detail log behind the Details tab.
+ *
+ * A lightweight DB backup is taken first (everything except the detail log,
+ * which backup.js already classifies as non-critical and auto-pruned), so a
+ * mistaken reset is recoverable by hand from DATA_DIR/db/backups.
+ *
+ * @returns {Promise<{history:number, days:number, details:number, backup:string|null}>}
+ */
+export async function resetUsage() {
+  const db = await getAdapter();
+
+  let backup = null;
+  try {
+    const { makeBackupDir, backupDbLite } = await import("../backup.js");
+    backup = backupDbLite(db, makeBackupDir("pre-usage-reset"));
+  } catch (e) {
+    console.warn("[usageRepo] pre-reset backup failed (continuing):", e.message);
+  }
+
+  let history = 0, days = 0;
+  db.transaction(() => {
+    history = db.get(`SELECT COUNT(*) as c FROM usageHistory`)?.c || 0;
+    days = db.get(`SELECT COUNT(*) as c FROM usageDaily`)?.c || 0;
+    db.run(`DELETE FROM usageHistory`);
+    db.run(`DELETE FROM usageDaily`);
+    db.run(`DELETE FROM _meta WHERE key = 'totalRequestsLifetime'`);
+  });
+
+  // The ring buffer and the pending tallies are in-memory copies of what was
+  // just deleted; clear them FIRST, so they are cleared even if the detail wipe
+  // below throws — otherwise the dashboard keeps serving deleted rows.
+  recentRing.items = [];
+  recentRing.initialized = false;
+  pendingRequests.byModel = {};
+  pendingRequests.byAccount = {};
+  scheduleStatsEvent("update", 50);
+
+  // Deliberately after the history/daily commit and non-fatal: the core wipe has
+  // already happened, so failing the whole request here would report "failed"
+  // for a reset that mostly succeeded, and skip the in-memory cleanup above.
+  let details = 0, detailsError = null;
+  try {
+    const { clearRequestDetails } = await import("./requestDetailsRepo.js");
+    details = await clearRequestDetails();
+  } catch (e) {
+    detailsError = e.message;
+    console.error("[usageRepo] detail log wipe failed:", e.message);
+  }
+
+  return { history, days, details, detailsError, backup };
+}
+
 export async function getUsageHistory(filter = {}) {
   const db = await getAdapter();
   const conds = [];

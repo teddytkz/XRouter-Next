@@ -33,6 +33,7 @@ function UsageContent() {
 
   const [period, setPeriod] = useState(searchParams.get("period") || "today");
   const [recalculating, setRecalculating] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const tabFromUrl = searchParams.get("tab");
   const activeTab = tabFromUrl && ["overview", "logs", "details"].includes(tabFromUrl)
@@ -85,6 +86,40 @@ function UsageContent() {
     }
   };
 
+  const handleReset = async () => {
+    if (!confirm(
+      "Delete ALL usage data?\n\n" +
+      "This erases every request record, all daily totals, and the request detail log. " +
+      "It cannot be undone from the UI.\n\n" +
+      "A backup of the history and totals is saved first under ~/.9router/db/backups " +
+      "(the request detail log is NOT included — it is large and auto-pruned)."
+    )) return;
+    if (prompt('Type "reset" to confirm.') !== "reset") return;
+
+    setResetting(true);
+    try {
+      const res = await fetch("/api/usage/reset", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(data.error || "Failed to reset usage");
+        return;
+      }
+      alert(
+        `Deleted ${data.history} request record(s), ${data.days} day(s) of totals, ` +
+        `and ${data.details} detail log(s).` +
+        (data.detailsError
+          ? `\n\nThe request detail log could not be cleared (${data.detailsError}) — retry the reset.`
+          : "") +
+        (data.backup ? `\n\nBackup: ${data.backup}` : "\n\nWarning: backup failed.")
+      );
+      window.location.reload();
+    } catch {
+      alert("Failed to reset usage");
+    } finally {
+      setResetting(false);
+    }
+  };
+
   return (
     <div className="flex min-w-0 flex-col gap-6 px-1 sm:px-0">
       {/* Period Selector */}
@@ -111,6 +146,17 @@ function UsageContent() {
             title="Recompute all stored costs with the pricing currently in effect"
           >
             Recalculate costs
+          </Button>
+          <Button
+            size="sm"
+            variant="danger"
+            icon="delete_sweep"
+            onClick={handleReset}
+            loading={resetting}
+            disabled={resetting}
+            title="Delete all usage history, daily totals, and request details"
+          >
+            Reset usage
           </Button>
         </div>
       </Card>
