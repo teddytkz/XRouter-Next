@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Badge, Button, Card, CardSkeleton } from "@/shared/components";
+import ModelPricingModal from "../providers/[id]/ModelPricingModal";
+
+const SELECT_CLASS =
+  "rounded-lg border border-border bg-background px-2 py-1.5 text-sm text-text-main focus:border-primary focus:outline-none disabled:opacity-50";
 
 // $/1M tokens, trailing zeros trimmed (0.0028 → "$0.0028", 5 → "$5").
 const money = (v) => {
@@ -35,7 +38,7 @@ const RATE_FIELDS = [
   ["cache_creation", "Cache write"],
 ];
 
-function ProviderSection({ provider }) {
+function ProviderSection({ provider, onEdit }) {
   const peakCount = provider.models.filter((m) => m.peak).length;
   return (
     <Card padding="none" className="overflow-hidden">
@@ -64,7 +67,7 @@ function ProviderSection({ provider }) {
           </thead>
           <tbody>
             {provider.models.map((model) => (
-              <ModelRows key={model.id} provider={provider} model={model} />
+              <ModelRows key={model.id} provider={provider} model={model} onEdit={onEdit} />
             ))}
           </tbody>
         </table>
@@ -74,10 +77,11 @@ function ProviderSection({ provider }) {
 }
 
 // One row per rate tier: the normal (base) row, then one row per time rule.
-function ModelRows({ provider, model }) {
+function ModelRows({ provider, model, onEdit }) {
   const pricing = model.pricing;
   const rules = Array.isArray(pricing?.rules) ? pricing.rules : [];
-  const linkable = !provider.id.startsWith("selfhosted") && !!pricing;
+  // Local (self-hosted) providers have no upstream cost, so rates are meaningless.
+  const editable = !provider.id.startsWith("selfhosted");
 
   return (
     <>
@@ -86,6 +90,17 @@ function ModelRows({ provider, model }) {
           <div className="flex items-center gap-2">
             <span className="font-medium text-text-main">{model.name}</span>
             {!pricing && <Badge variant="default" size="sm">no rate</Badge>}
+            {editable && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="edit"
+                className="ml-auto shrink-0"
+                title={`Edit rates for ${model.id}`}
+                aria-label={`Edit rates for ${model.id}`}
+                onClick={() => onEdit(provider.id, model.id)}
+              />
+            )}
           </div>
           <code className="text-[11px] text-text-muted">{model.id}</code>
         </td>
@@ -113,19 +128,6 @@ function ModelRows({ provider, model }) {
           ))}
         </tr>
       ))}
-
-      {linkable && rules.length > 0 && (
-        <tr>
-          <td colSpan={RATE_FIELDS.length + 1} className="px-4 pb-2">
-            <Link
-              href={`/dashboard/providers/${provider.id}`}
-              className="text-[11px] text-primary hover:underline"
-            >
-              Edit rates for {provider.name} →
-            </Link>
-          </td>
-        </tr>
-      )}
     </>
   );
 }
@@ -135,6 +137,10 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
   const [peakOnly, setPeakOnly] = useState(false);
+  const [providerFilter, setProviderFilter] = useState("");
+  const [modelFilter, setModelFilter] = useState("");
+  const [editing, setEditing] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -149,16 +155,46 @@ export default function PricingPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, []);
+  }, [reloadKey]);
+
+  const providerOptions = useMemo(
+    () => (table || []).map((p) => ({ id: p.id, name: p.name })),
+    [table]
+  );
+
+  // Scoped to the chosen provider, and keyed by a composite "providerId::modelId"
+  // — model ids repeat across providers, so a bare id could not say which row to keep.
+  const modelOptions = useMemo(() => {
+    if (!table) return [];
+    const source = providerFilter
+      ? table.filter((p) => p.id === providerFilter)
+      : table;
+    return source.flatMap((p) =>
+      p.models.map((m) => ({
+        value: `${p.id}::${m.id}`,
+        name: providerFilter ? m.name : `${p.name} · ${m.name}`,
+      }))
+    );
+  }, [table, providerFilter]);
+
+  const onProviderChange = (value) => {
+    setProviderFilter(value);
+    setModelFilter("");
+  };
+
+  const onEdit = useCallback((provider, model) => setEditing({ provider, model }), []);
 
   const filtered = useMemo(() => {
     if (!table) return [];
     const q = query.trim().toLowerCase();
+    const [mfProvider, mfModel] = modelFilter ? modelFilter.split("::") : [];
     return table
+      .filter((provider) => !providerFilter || provider.id === providerFilter)
       .map((provider) => ({
         ...provider,
         models: provider.models.filter((m) => {
           if (peakOnly && !m.peak) return false;
+          if (mfModel && !(provider.id === mfProvider && m.id === mfModel)) return false;
           if (!q) return true;
           return m.id.toLowerCase().includes(q)
             || m.name.toLowerCase().includes(q)
@@ -167,7 +203,7 @@ export default function PricingPage() {
         }),
       }))
       .filter((provider) => provider.models.length > 0);
-  }, [table, query, peakOnly]);
+  }, [table, query, peakOnly, providerFilter, modelFilter]);
 
   if (loading) {
     return (
@@ -183,29 +219,71 @@ export default function PricingPage() {
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-1 sm:px-0">
       <Card padding="sm">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative flex-1">
-            <span className="material-symbols-outlined pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-text-muted">
-              search
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <span className="material-symbols-outlined pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[18px] text-text-muted">
+                search
+              </span>
+              <input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search provider or model…"
+                className="w-full rounded-lg border border-border bg-background py-1.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant={peakOnly ? "primary" : "secondary"}
+              icon="bolt"
+              onClick={() => setPeakOnly((v) => !v)}
+            >
+              Peak rate only
+            </Button>
+            <span className="shrink-0 text-xs text-text-muted">
+              {filtered.length} providers · {totalModels} models
             </span>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search provider or model…"
-              className="w-full rounded-lg border border-border bg-background py-1.5 pl-9 pr-3 text-sm focus:border-primary focus:outline-none"
-            />
           </div>
-          <Button
-            size="sm"
-            variant={peakOnly ? "primary" : "secondary"}
-            icon="bolt"
-            onClick={() => setPeakOnly((v) => !v)}
-          >
-            Peak rate only
-          </Button>
-          <span className="shrink-0 text-xs text-text-muted">
-            {filtered.length} providers · {totalModels} models
-          </span>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={providerFilter}
+              onChange={(e) => onProviderChange(e.target.value)}
+              className={SELECT_CLASS}
+              aria-label="Filter by provider"
+            >
+              <option value="">All providers</option>
+              {providerOptions.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+
+            <select
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              disabled={modelOptions.length === 0}
+              className={SELECT_CLASS}
+              aria-label="Filter by model"
+            >
+              <option value="">
+                {providerFilter ? "All models in provider" : "All models"}
+              </option>
+              {modelOptions.map((m) => (
+                <option key={m.value} value={m.value}>{m.name}</option>
+              ))}
+            </select>
+
+            {(providerFilter || modelFilter) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                icon="close"
+                onClick={() => { setProviderFilter(""); setModelFilter(""); }}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
         </div>
         <p className="mt-2 text-[11px] text-text-muted">
           All rates are <strong>$ per 1M tokens</strong>, and all time windows are in <strong>UTC</strong>.
@@ -224,9 +302,21 @@ export default function PricingPage() {
       ) : (
         <div className="flex flex-col gap-4">
           {filtered.map((provider) => (
-            <ProviderSection key={provider.id} provider={provider} />
+            <ProviderSection key={provider.id} provider={provider} onEdit={onEdit} />
           ))}
         </div>
+      )}
+
+      {/* Refetch on close: the modal saves or resets, so the visible rates would
+          otherwise stay stale until a manual page reload. */}
+      {editing && (
+        <ModelPricingModal
+          isOpen
+          provider={editing.provider}
+          modelId={editing.model}
+          displayModel={`${editing.provider}/${editing.model}`}
+          onClose={() => { setEditing(null); setReloadKey((k) => k + 1); }}
+        />
       )}
     </div>
   );
