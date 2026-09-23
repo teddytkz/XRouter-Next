@@ -39,6 +39,7 @@
 - **Pricing fix**: recalc now creates daily buckets that a legacy/imported day is missing, instead of silently dropping their share of the delta
 - **Pricing fix**: `PATCH /api/pricing` accepted `Infinity` (JSON-round-trips to `null`) — validation now uses `Number.isFinite`; time windows are limited to `00:00–23:59` (plus `24:00` as an end-of-day bound) and are no longer silently wrapped modulo 24h
 - **Pricing change**: time-of-day windows are now evaluated in **UTC** by default instead of server local time (a rule may still pin its own `tz`). Every schedule we model is published in UTC, so a host in e.g. WIB no longer bills DeepSeek peak at the wrong hours, and a rule typed in the UI means the same thing on every machine
+- **Pricing**: the per-model editor now has **day checkboxes** under each time-of-day rule — uncheck a day to exclude it from the window (e.g. DeepSeek peak, Mon–Fri only). All seven on means every day, and the rule is stored without a `days` field in that case
 - **Cline**: add 6 free tier models without ClinePass requirement — `cline-free/muse-spark-1.3-contributor`, `deepseek/deepseek-v4-flash`, `z-ai/glm-5.3-flash`, `cline-free/solar-pro4`, `cline-free/longcat-2.0`, `poolside/laguna-s-2.1:free` with $0 billing and separate quota limits
 - **Cline**: add `authModes`, `hasOAuth`, `authHint`, `preserveHookAuth` to provider config; sync OAuth token/refresh URLs on ClinePass
 - **Docs**: add comprehensive Cline free tier setup guide at `docs/CLINE-FREE-GUIDE.md`

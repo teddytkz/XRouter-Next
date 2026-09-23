@@ -15,14 +15,18 @@ const FIELD_LABELS = {
   cached: "Cached",
 };
 
+// Index matches the engine's weekday numbering (0 = Sunday), same as Date#getDay.
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
 function blankRule() {
   return { from: "01:00", to: "12:00", input: "", output: "" };
 }
 
 /**
  * Per-model pricing editor. Rates are $ per 1M tokens.
- * Time-of-day rules: { from, to, ...rates } — window in UTC,
- * start-inclusive / end-exclusive; from > to wraps midnight.
+ * Time-of-day rules: { from, to, days?, ...rates } — window in UTC,
+ * start-inclusive / end-exclusive; from > to wraps midnight. `days` lists the
+ * weekdays the rule applies on; unchecking a day excludes it (absent = every day).
  */
 export default function ModelPricingModal({ isOpen, onClose, provider, modelId, displayModel }) {
   const [loading, setLoading] = useState(true);
@@ -78,6 +82,31 @@ export default function ModelPricingModal({ isOpen, onClose, provider, modelId, 
     setRules((prev) => prev.filter((_, i) => i !== index));
   };
 
+  // Days a rule fires on. An absent/empty list means "every day" — that is what
+  // the engine does, so the UI must read it the same way.
+  const activeDays = (rule) =>
+    Array.isArray(rule.days) && rule.days.length ? rule.days : [0, 1, 2, 3, 4, 5, 6];
+
+  const toggleDay = (index, day) => {
+    setIsOverride(true);
+    setRules((prev) =>
+      prev.map((rule, i) => {
+        if (i !== index) return rule;
+        const on = activeDays(rule);
+        // Unchecking the last remaining day would leave `days: []`, which the
+        // engine reads as "every day" — the opposite of what was clicked. Refuse.
+        if (on.length === 1 && on.includes(day)) return rule;
+        const next = on.includes(day) ? on.filter((d) => d !== day) : [...on, day].sort((a, b) => a - b);
+        const copy = { ...rule };
+        // All seven is the same as no filter — drop the field so the stored rule
+        // stays terse and matches how the DeepSeek seeds are written.
+        if (next.length === 7) delete copy.days;
+        else copy.days = next;
+        return copy;
+      })
+    );
+  };
+
   const handleSave = async () => {
     const payload = {};
     for (const field of BASE_FIELDS) {
@@ -96,6 +125,9 @@ export default function ModelPricingModal({ isOpen, onClose, provider, modelId, 
         return;
       }
       const entry = { from: rule.from, to: rule.to };
+      if (Array.isArray(rule.days) && rule.days.length && rule.days.length < 7) {
+        entry.days = [...rule.days].sort((a, b) => a - b);
+      }
       for (const field of BASE_FIELDS) {
         const value = parseFloat(rule[field]);
         if (!isNaN(value) && value >= 0) entry[field] = value;
@@ -207,6 +239,7 @@ export default function ModelPricingModal({ isOpen, onClose, provider, modelId, 
                 No rules. Add one to charge a different rate during certain hours
                 (e.g. 01:00–12:00 at $0.10/1M). Windows are in <strong>UTC</strong>;
                 a window whose start is later than its end wraps past midnight.
+                Toggle the days a rule applies to — all on means every day.
               </p>
             ) : (
               <div className="flex flex-col gap-3">
@@ -254,6 +287,28 @@ export default function ModelPricingModal({ isOpen, onClose, provider, modelId, 
                           />
                         </label>
                       ))}
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-start gap-2">
+                      {DAYS.map((label, day) => {
+                        const on = activeDays(rule).includes(day);
+                        return (
+                          <label
+                            key={day}
+                            title={`${label} — ${on ? "included" : "excluded"}`}
+                            className="flex cursor-pointer flex-col items-center gap-1"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() => toggleDay(index, day)}
+                              className="h-4 w-4 cursor-pointer rounded border-border accent-primary"
+                            />
+                            <span className={`text-xs ${on ? "text-text" : "text-text-muted"}`}>
+                              {label[0]}
+                            </span>
+                          </label>
+                        );
+                      })}
                     </div>
                   </div>
                 ))}

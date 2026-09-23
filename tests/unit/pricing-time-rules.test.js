@@ -50,6 +50,23 @@ describe("time-of-day pricing rules", () => {
     expect(activeTimeRule(bad, at(9))).toBeNull();
   });
 
+  it("restricts a rule to its listed weekdays", () => {
+    // What the modal's day checkboxes produce. 2026-01-05 is a Monday, 01-04 a Sunday.
+    const weekdays = { ...base, rules: [{ from: "01:00", to: "04:00", days: [1, 2, 3, 4, 5], input: 0.1 }] };
+    const mon = new Date(Date.UTC(2026, 0, 5, 2));
+    const sun = new Date(Date.UTC(2026, 0, 4, 2));
+    expect(activeTimeRule(weekdays, mon)).not.toBeNull();
+    expect(activeTimeRule(weekdays, sun)).toBeNull();
+  });
+
+  it("treats an absent or empty days list as every day", () => {
+    // The modal drops `days` when all seven are on, so absent must mean "always".
+    const everyDay = { ...base, rules: [{ from: "01:00", to: "04:00", input: 0.1 }] };
+    expect(activeTimeRule(everyDay, at(2))).not.toBeNull();
+    const empty = { ...base, rules: [{ from: "01:00", to: "04:00", days: [], input: 0.1 }] };
+    expect(activeTimeRule(empty, at(2))).not.toBeNull();
+  });
+
   it("prices a request with the rule rate at the request time", () => {
     const tokens = { prompt_tokens: 1_000_000, completion_tokens: 1_000_000 };
     // rule active: 0.1 + 0.8
