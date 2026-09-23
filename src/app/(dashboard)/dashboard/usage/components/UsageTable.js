@@ -56,7 +56,8 @@ ValueCell.propTypes = {
 function ValueCells({ item }) {
   const cached = item.cachedTokens || 0;
   // cached is a subset of prompt, so peel it out: the Input cell then shows the
-  // fresh tokens whose share is what inputCost was allocated from.
+  // fresh tokens whose cost (a blend of the input and cache-creation rates) is
+  // what the server folded into `inputCost` — see sortData in UsageStats.
   const freshInput = Math.max(0, (item.promptTokens || 0) - cached);
   return (
     <>

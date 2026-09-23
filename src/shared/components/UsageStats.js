@@ -147,15 +147,31 @@ function sortData(dataMap, pendingMap = {}, sortBy, sortOrder) {
     .map(([key, data]) => {
       const totalTokens = (data.promptTokens || 0) + (data.completionTokens || 0);
       const totalCost = data.cost || 0;
-      // ponytail: cost split is a token-share allocation of the (rate-accurate)
-      // server total, not a per-rate recompute. cached is a subset of prompt, so
-      // peel it out of the input share. Upgrade to a stored per-component cost
-      // breakdown if exact cached-rate cost display is needed.
       const cachedTokens = data.cachedTokens || 0;
-      const nonCachedInput = Math.max(0, (data.promptTokens || 0) - cachedTokens);
-      const inputCost = totalTokens > 0 ? nonCachedInput * (totalCost / totalTokens) : 0;
-      const cachedCost = totalTokens > 0 ? cachedTokens * (totalCost / totalTokens) : 0;
-      const outputCost = totalTokens > 0 ? (data.completionTokens || 0) * (totalCost / totalTokens) : 0;
+
+      // The server stores an exact per-component split (each charged at its own
+      // rate, peak windows already applied per request). Use it when present.
+      const hasBreakdown = typeof data.inputCost === "number";
+      let inputCost, cachedCost, outputCost;
+      if (hasBreakdown) {
+        // Five parts, three displayed columns, and the columns must sum to the
+        // Total. So fold the two "subset" parts into the cell that shares their
+        // tokens: cache-creation is prompt billed at its own rate → input, and
+        // reasoning is completion billed at its own rate → output. Both cells
+        // then show a blended rate, and nothing is silently dropped.
+        inputCost = data.inputCost + (data.cacheCreationCost || 0);
+        cachedCost = data.cachedCost || 0;
+        outputCost = data.outputCost + (data.reasoningCost || 0);
+      } else {
+        // ponytail: rows written before the breakdown existed have none stored,
+        // so fall back to allocating the (rate-accurate) total by token share.
+        // cached is a subset of prompt, so peel it out of the input share.
+        const nonCachedInput = Math.max(0, (data.promptTokens || 0) - cachedTokens);
+        inputCost = totalTokens > 0 ? nonCachedInput * (totalCost / totalTokens) : 0;
+        cachedCost = totalTokens > 0 ? cachedTokens * (totalCost / totalTokens) : 0;
+        outputCost = totalTokens > 0 ? (data.completionTokens || 0) * (totalCost / totalTokens) : 0;
+      }
+
       return { ...data, key, totalTokens, totalCost, inputCost, cachedCost, outputCost, pending: pendingMap[key] || 0 };
     })
     .sort((a, b) => {

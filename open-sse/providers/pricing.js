@@ -517,17 +517,22 @@ export function formatCost(cost) {
 }
 
 /**
- * Calculate cost from tokens and pricing
+ * Per-component cost. The single source of truth for pricing math: the total is
+ * the sum of the parts, so a displayed breakdown can never disagree with the
+ * total it came from.
+ *
  * @param {object} tokens
  * @param {object} pricing - base rates; may carry `rules` (see applyTimeRules)
  * @param {Date} [at] - request time, defaults to now
- * @returns {number} cost in dollars
+ * @returns {{input:number, cached:number, output:number, reasoning:number, cacheCreation:number, total:number}}
  */
-export function calculateCostFromTokens(tokens, pricing, at = new Date()) {
-  if (!tokens || !pricing) return 0;
+export function calculateCostBreakdown(tokens, pricing, at = new Date()) {
+  const zero = { input: 0, cached: 0, output: 0, reasoning: 0, cacheCreation: 0, total: 0 };
+  if (!tokens || !pricing) return zero;
 
+  // Per-row `at` is what makes peak windows correct: a rule is picked by the
+  // request's own timestamp, not by when the aggregate is computed.
   pricing = applyTimeRules(pricing, at);
-  let cost = 0;
 
   const inputTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
   const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
@@ -536,25 +541,31 @@ export function calculateCostFromTokens(tokens, pricing, at = new Date()) {
   // are subsets, so subtract both to avoid charging them at the full input rate.
   const nonCachedInput = Math.max(0, inputTokens - cachedTokens - cacheCreationTokens);
 
-  cost += nonCachedInput * (pricing.input / 1000000);
+  const input = nonCachedInput * (pricing.input / 1000000);
 
   // `??`, not `||`: an explicit 0 rate means "this token class is free" (e.g.
   // z-ai/glm-5.3-free) and must not fall back to the full input rate.
-  if (cachedTokens > 0) {
-    cost += cachedTokens * ((pricing.cached ?? pricing.input) / 1000000);
-  }
+  const cached = cachedTokens > 0 ? cachedTokens * ((pricing.cached ?? pricing.input) / 1000000) : 0;
 
   const outputTokens = tokens.completion_tokens || tokens.output_tokens || 0;
-  cost += outputTokens * (pricing.output / 1000000);
+  const output = outputTokens * (pricing.output / 1000000);
 
+  // reasoning_tokens is a subset of completion_tokens upstream, but the two are
+  // billed at different rates, so it is charged separately here — same as before.
   const reasoningTokens = tokens.reasoning_tokens || 0;
-  if (reasoningTokens > 0) {
-    cost += reasoningTokens * ((pricing.reasoning ?? pricing.output) / 1000000);
-  }
+  const reasoning = reasoningTokens > 0 ? reasoningTokens * ((pricing.reasoning ?? pricing.output) / 1000000) : 0;
 
-  if (cacheCreationTokens > 0) {
-    cost += cacheCreationTokens * ((pricing.cache_creation ?? pricing.input) / 1000000);
-  }
+  const cacheCreation = cacheCreationTokens > 0
+    ? cacheCreationTokens * ((pricing.cache_creation ?? pricing.input) / 1000000)
+    : 0;
 
-  return cost;
+  return { input, cached, output, reasoning, cacheCreation, total: input + cached + output + reasoning + cacheCreation };
+}
+
+/**
+ * Total cost only. Thin wrapper over calculateCostBreakdown so the two can never
+ * disagree — the breakdown is what the usage table displays per column.
+ */
+export function calculateCostFromTokens(tokens, pricing, at = new Date()) {
+  return calculateCostBreakdown(tokens, pricing, at).total;
 }

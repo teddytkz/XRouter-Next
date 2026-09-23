@@ -50,6 +50,72 @@ function getLocalDateKey(timestamp) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+// Per-component cost fields, kept in sync with calculateCostBreakdown's keys.
+// Stored per bucket so the usage table can show an exact Input/Cached/Output
+// cost instead of allocating the total by token share.
+const COST_PARTS = ["inputCost", "cachedCost", "outputCost", "reasoningCost", "cacheCreationCost"];
+
+// Only fields the source actually carries are created: a legacy-imported bucket
+// has a `cost` but no split, and leaving the fields absent lets the client fall
+// back to allocating the total rather than showing $0.00 in every column.
+function addCostParts(target, values) {
+  for (const part of COST_PARTS) {
+    if (values[part] == null) continue;
+    target[part] = (target[part] || 0) + values[part];
+  }
+}
+
+// Move a stored per-component cost toward `next` by the same factor the `cost`
+// column moved. `old` is 0 when the bucket predates the breakdown, so a first
+// recalculate just adopts the freshly computed value.
+function applyPartsTo(target, next, factor) {
+  for (const [field, key] of [
+    ["inputCost", "input"],
+    ["cachedCost", "cached"],
+    ["outputCost", "output"],
+    ["reasoningCost", "reasoning"],
+    ["cacheCreationCost", "cacheCreation"],
+  ]) {
+    const old = target[field] || 0;
+    target[field] = old + (next[key] - old) * factor;
+  }
+}
+
+// Plain-number accumulator (calculateCostBreakdown uses different key names —
+// `input`/`cached`/… — than the stored `*Cost` fields, so they stay separate).
+function emptyParts() {
+  return { input: 0, cached: 0, output: 0, reasoning: 0, cacheCreation: 0 };
+}
+
+// Force Σ parts to equal the figure's own cost. Needed for legacy-imported days,
+// whose `cost` was bucketed by a different date rule than the history rows now
+// carry (so history can never reproduce it): the stored cost is what was billed
+// and stays authoritative, the split is scaled to agree with it. A no-op when the
+// two already match, which is every day history can reconstruct.
+function normalizeParts(target) {
+  const sum = COST_PARTS.reduce((s, p) => s + (target[p] || 0), 0);
+  const cost = target.cost || 0;
+  if (Math.abs(sum - cost) < 1e-12) return;
+  // Scaling needs a positive split and a non-negative cost; anything else (a
+  // free-model split of 0 against a legacy cost, or a corrupt negative cost)
+  // would divide into negatives or NaN. Drop the split instead — no split is
+  // honest, a wrong one is not, and the client falls back to token share.
+  if (sum > 0 && cost >= 0) {
+    const k = cost / sum;
+    for (const p of COST_PARTS) target[p] = (target[p] || 0) * k;
+  } else {
+    for (const p of COST_PARTS) delete target[p];
+  }
+}
+
+function addParts(target, b) {
+  target.input += b.input;
+  target.cached += b.cached;
+  target.output += b.output;
+  target.reasoning += b.reasoning;
+  target.cacheCreation += b.cacheCreation;
+}
+
 function addToCounter(target, key, values) {
   if (!target[key]) target[key] = { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0 };
   target[key].requests += values.requests || 1;
@@ -57,7 +123,25 @@ function addToCounter(target, key, values) {
   target[key].completionTokens += values.completionTokens || 0;
   target[key].cachedTokens += values.cachedTokens || 0;
   target[key].cost += values.cost || 0;
+  addCostParts(target[key], values);
   if (values.meta) Object.assign(target[key], values.meta);
+}
+
+// A bucket's split is only trustworthy when EVERY row behind it carried one. A
+// bucket mixing breakdown rows with legacy rows has a partial split that
+// under-sums its cost, so drop it and let the client allocate the total by token
+// share — the pre-breakdown behaviour — rather than show columns that don't add
+// up. A bucket with no split at all (legacy-only) is already absent, so this is
+// a no-op for it.
+function dropBadParts(buckets) {
+  for (const bucket of buckets) {
+    for (const target of Object.values(bucket)) {
+      if (!COST_PARTS.some((p) => target[p] != null)) continue;
+      const sum = COST_PARTS.reduce((s, p) => s + (target[p] || 0), 0);
+      if (Math.abs(sum - (target.cost || 0)) < 1e-6) continue;
+      for (const p of COST_PARTS) delete target[p];
+    }
+  }
 }
 
 // Single source of truth for where an entry lands in the daily aggregate.
@@ -79,13 +163,25 @@ function aggregateEntryToDay(day, entry) {
   const completionTokens = entry.tokens?.completion_tokens || entry.tokens?.output_tokens || 0;
   const cachedTokens = entry.tokens?.cached_tokens || entry.tokens?.cache_read_input_tokens || 0;
   const cost = entry.cost || 0;
-  const vals = { promptTokens, completionTokens, cachedTokens, cost };
+  // A row saved before the breakdown existed (or one whose pricing was missing)
+  // contributes no split — leave the fields off entirely (see addCostParts) so
+  // the bucket keeps falling back to a token-share allocation of `cost`.
+  const b = entry.costBreakdown;
+  const vals = {
+    promptTokens, completionTokens, cachedTokens, cost,
+    ...(b ? {
+      inputCost: b.input, cachedCost: b.cached, outputCost: b.output,
+      reasoningCost: b.reasoning, cacheCreationCost: b.cacheCreation,
+    } : {}),
+  };
 
   day.requests = (day.requests || 0) + 1;
   day.promptTokens = (day.promptTokens || 0) + promptTokens;
   day.completionTokens = (day.completionTokens || 0) + completionTokens;
   day.cachedTokens = (day.cachedTokens || 0) + cachedTokens;
   day.cost = (day.cost || 0) + cost;
+  // No day-level split: only the per-bucket counters below are read back (via
+  // getUsageStats), so a second copy at the top level would be write-only.
 
   day.byProvider ||= {};
   day.byModel ||= {};
@@ -153,9 +249,12 @@ async function calculateCost(provider, model, tokens, at) {
     // Delegate the actual math to the single source of truth (avoids the two
     // copies drifting apart — see open-sse/providers/pricing.js for the
     // cache-inclusive prompt_tokens convention this assumes).
-    const { calculateCostFromTokens } = await import("open-sse/providers/pricing.js");
-    const cost = calculateCostFromTokens(tokens, pricing, at ? new Date(at) : new Date());
-    return Number.isFinite(cost) ? cost : null;
+    const { calculateCostBreakdown } = await import("open-sse/providers/pricing.js");
+    const b = calculateCostBreakdown(tokens, pricing, at ? new Date(at) : new Date());
+    // Any non-finite part would poison the stored aggregate, so treat the whole
+    // row as unpriceable rather than writing a partially-NaN breakdown.
+    if (![b.input, b.cached, b.output, b.reasoning, b.cacheCreation, b.total].every(Number.isFinite)) return null;
+    return b;
   } catch (e) {
     console.error("Error calculating cost:", e);
     return null;
@@ -289,7 +388,9 @@ export async function saveRequestUsage(entry) {
     if (!entry.timestamp) entry.timestamp = new Date().toISOString();
     // Unpriceable model → 0 for a fresh row (the row is still worth keeping, and
     // recalculateCosts can price it later). Never let NaN reach the REAL column.
-    entry.cost = (await calculateCost(entry.provider, entry.model, entry.tokens, entry.timestamp)) ?? 0;
+    const breakdown = await calculateCost(entry.provider, entry.model, entry.tokens, entry.timestamp);
+    entry.cost = breakdown ? breakdown.total : 0;
+    entry.costBreakdown = breakdown;
 
     const tokens = entry.tokens || {};
     const promptTokens = tokens.prompt_tokens || tokens.input_tokens || 0;
@@ -333,6 +434,13 @@ export async function saveRequestUsage(entry) {
         return;
       }
 
+      // The per-component split rides in `meta` (already a JSON column) rather
+      // than a new column: it is only read back for the today/24h view, which
+      // streams straight from usageHistory instead of the daily aggregate.
+      const meta = entry.costBreakdown
+        ? { ...(entry.meta || {}), costBreakdown: entry.costBreakdown }
+        : (entry.meta || {});
+
       db.run(
         hasLatencyCol
           ? `INSERT INTO usageHistory(timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, latencyMs, status, tokens, meta) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
@@ -342,13 +450,13 @@ export async function saveRequestUsage(entry) {
               entry.timestamp, entry.provider || null, entry.model || null,
               entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
               promptTokens, completionTokens, entry.cost || 0, latencyMs, entry.status || "ok",
-              stringifyJson(tokens), stringifyJson(entry.meta || {}),
+              stringifyJson(tokens), stringifyJson(meta),
             ]
           : [
               entry.timestamp, entry.provider || null, entry.model || null,
               entry.connectionId || null, entry.apiKey || null, entry.endpoint || null,
               promptTokens, completionTokens, entry.cost || 0, entry.status || "ok",
-              stringifyJson(tokens), stringifyJson(entry.meta || {}),
+              stringifyJson(tokens), stringifyJson(meta),
             ]
       );
 
@@ -394,13 +502,19 @@ export async function saveRequestUsage(entry) {
 export async function recalculateCosts() {
   const db = await getAdapter();
   const rows = db.all(
-    `SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, tokens, cost
+    `SELECT id, timestamp, provider, model, connectionId, apiKey, endpoint, tokens, cost, meta
      FROM usageHistory ORDER BY id ASC`
   );
 
   const updates = [];
   // dateKey → { total, buckets: { bucket → { key → delta } } }
   const perDay = new Map();
+  // dateKey → { total, buckets: { bucket → key → Σ new per-component costs } }.
+  // Rebuilt from history rather than deltas: the old per-component split was
+  // never stored, so there is nothing to subtract from. Only rows with history
+  // contribute; a bucket that exists purely from a legacy import keeps whatever
+  // it had.
+  const partsByDay = new Map();
   let changed = 0;
   let skipped = 0;
 
@@ -412,14 +526,27 @@ export async function recalculateCosts() {
     // tables don't cover.
     if (next === null) { skipped += 1; continue; }
 
-    const prev = row.cost || 0;
-    const diff = next - prev;
-    if (Math.abs(diff) < 1e-12) continue;
-
-    updates.push([next, row.id]);
-    changed += 1;
-
     const dateKey = getLocalDateKey(row.timestamp);
+    let dayParts = partsByDay.get(dateKey);
+    if (!dayParts) { dayParts = { buckets: {} }; partsByDay.set(dateKey, dayParts); }
+    for (const [bucket, key] of bucketKeys(row)) {
+      if (!key) continue;
+      dayParts.buckets[bucket] ||= {};
+      dayParts.buckets[bucket][key] ||= emptyParts();
+      addParts(dayParts.buckets[bucket][key], next);
+    }
+
+    const prev = row.cost || 0;
+    const diff = next.total - prev;
+    const prevMeta = parseJson(row.meta, {}) || {};
+    // A row can have a correct cost but no stored split (written before the
+    // breakdown existed), so "needs a write" is not the same as "cost changed".
+    const needsBreakdown = !prevMeta.costBreakdown;
+    if (Math.abs(diff) < 1e-12 && !needsBreakdown) continue;
+
+    updates.push([next.total, row.id, stringifyJson({ ...prevMeta, costBreakdown: next })]);
+    if (Math.abs(diff) >= 1e-12) changed += 1;
+
     let day = perDay.get(dateKey);
     if (!day) { day = { total: 0, buckets: {} }; perDay.set(dateKey, day); }
     day.total += diff;
@@ -433,21 +560,32 @@ export async function recalculateCosts() {
 
   let delta = 0;
   db.transaction(() => {
-    for (const [cost, id] of updates) {
-      db.run(`UPDATE usageHistory SET cost = ? WHERE id = ?`, [cost, id]);
+    for (const [cost, id, meta] of updates) {
+      db.run(`UPDATE usageHistory SET cost = ?, meta = ? WHERE id = ?`, [cost, meta, id]);
     }
 
-    for (const [dateKey, dayDelta] of perDay) {
+    // A day can appear in partsByDay but not perDay (cost was already correct,
+    // only the breakdown was missing), so walk the union of both.
+    for (const dateKey of new Set([...perDay.keys(), ...partsByDay.keys()])) {
       const row = db.get(`SELECT data FROM usageDaily WHERE dateKey = ?`, [dateKey]);
       if (!row) continue; // no aggregate for that day — nothing to shift
       const day = parseJson(row.data, {}) || {};
+      const dayDelta = perDay.get(dateKey);
+      const dayParts = partsByDay.get(dateKey);
 
       // Buckets may be missing from a legacy/imported day — create them so every
       // diff lands somewhere. Skipping them moved day.cost while its breakdowns
       // stayed put, which breaks `day.cost == Σ buckets`.
-      for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
+      const touched = new Set([
+        ...Object.keys(dayDelta?.buckets || {}),
+        ...Object.keys(dayParts?.buckets || {}),
+      ]);
+      for (const bucket of touched) {
         day[bucket] ||= {};
-        for (const key of Object.keys(keys)) {
+        for (const key of new Set([
+          ...Object.keys(dayDelta?.buckets?.[bucket] || {}),
+          ...Object.keys(dayParts?.buckets?.[bucket] || {}),
+        ])) {
           day[bucket][key] ||= { requests: 0, promptTokens: 0, completionTokens: 0, cachedTokens: 0, cost: 0 };
         }
       }
@@ -458,7 +596,7 @@ export async function recalculateCosts() {
       // `factor` only shrinks when a stored figure is already negative (corrupt
       // legacy row) — then the day is left untouched rather than half-applied.
       let factor = 1;
-      if (dayDelta.total < 0) {
+      if (dayDelta && dayDelta.total < 0) {
         let headroom = Math.max(0, day.cost || 0);
         for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
           for (const [key, diff] of Object.entries(keys)) {
@@ -468,15 +606,30 @@ export async function recalculateCosts() {
         factor = Math.min(1, headroom / -dayDelta.total);
       }
 
-      day.cost = (day.cost || 0) + dayDelta.total * factor;
-      for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
-        for (const [key, diff] of Object.entries(keys)) {
-          day[bucket][key].cost = (day[bucket][key].cost || 0) + diff * factor;
+      if (dayDelta) {
+        day.cost = (day.cost || 0) + dayDelta.total * factor;
+        for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
+          for (const [key, diff] of Object.entries(keys)) {
+            day[bucket][key].cost = (day[bucket][key].cost || 0) + diff * factor;
+          }
+        }
+        delta += dayDelta.total * factor;
+      }
+
+      // Rebuilt per-component totals: stored = old + (new - old) * factor. Using
+      // the same `factor` keeps Σ parts tracking `cost` even on the clamped path.
+      // normalizeParts then forces Σ parts == cost for the buckets history cannot
+      // fully account for (legacy rows on the same day, pruned history).
+      if (dayParts) {
+        for (const [bucket, keys] of Object.entries(dayParts.buckets)) {
+          for (const [key, p] of Object.entries(keys)) {
+            applyPartsTo(day[bucket][key], p, factor);
+            normalizeParts(day[bucket][key]);
+          }
         }
       }
 
       db.run(`UPDATE usageDaily SET data = ? WHERE dateKey = ?`, [stringifyJson(day), dateKey]);
-      delta += dayDelta.total * factor;
     }
   });
 
@@ -672,6 +825,7 @@ export async function getUsageStats(period = "all") {
         stats.byProvider[prov].completionTokens += p.completionTokens || 0;
         stats.byProvider[prov].cachedTokens += p.cachedTokens || 0;
         stats.byProvider[prov].cost += p.cost || 0;
+        addCostParts(stats.byProvider[prov], p);
       }
 
       for (const [mk, m] of Object.entries(day.byModel || {})) {
@@ -687,6 +841,7 @@ export async function getUsageStats(period = "all") {
         stats.byModel[statsKey].completionTokens += m.completionTokens || 0;
         stats.byModel[statsKey].cachedTokens += m.cachedTokens || 0;
         stats.byModel[statsKey].cost += m.cost || 0;
+        addCostParts(stats.byModel[statsKey], m);
         if (dateKey > (stats.byModel[statsKey].lastUsed || "")) stats.byModel[statsKey].lastUsed = dateKey;
       }
 
@@ -704,6 +859,7 @@ export async function getUsageStats(period = "all") {
         stats.byAccount[accountKey].completionTokens += a.completionTokens || 0;
         stats.byAccount[accountKey].cachedTokens += a.cachedTokens || 0;
         stats.byAccount[accountKey].cost += a.cost || 0;
+        addCostParts(stats.byAccount[accountKey], a);
         if (dateKey > (stats.byAccount[accountKey].lastUsed || "")) stats.byAccount[accountKey].lastUsed = dateKey;
       }
 
@@ -724,6 +880,7 @@ export async function getUsageStats(period = "all") {
         stats.byApiKey[akKey].completionTokens += ak.completionTokens || 0;
         stats.byApiKey[akKey].cachedTokens += ak.cachedTokens || 0;
         stats.byApiKey[akKey].cost += ak.cost || 0;
+        addCostParts(stats.byApiKey[akKey], ak);
         if (dateKey > (stats.byApiKey[akKey].lastUsed || "")) stats.byApiKey[akKey].lastUsed = dateKey;
       }
 
@@ -740,6 +897,7 @@ export async function getUsageStats(period = "all") {
         stats.byEndpoint[epKey].completionTokens += ep.completionTokens || 0;
         stats.byEndpoint[epKey].cachedTokens += ep.cachedTokens || 0;
         stats.byEndpoint[epKey].cost += ep.cost || 0;
+        addCostParts(stats.byEndpoint[epKey], ep);
         if (dateKey > (stats.byEndpoint[epKey].lastUsed || "")) stats.byEndpoint[epKey].lastUsed = dateKey;
       }
     }
@@ -781,7 +939,7 @@ export async function getUsageStats(period = "all") {
       cutoff = new Date(Date.now() - PERIOD_MS["24h"]).toISOString();
     }
     const filtered = db.all(
-      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens FROM usageHistory WHERE timestamp >= ?`,
+      `SELECT timestamp, provider, model, connectionId, apiKey, endpoint, promptTokens, completionTokens, cost, tokens, meta FROM usageHistory WHERE timestamp >= ?`,
       [cutoff]
     );
 
@@ -792,6 +950,19 @@ export async function getUsageStats(period = "all") {
       const cachedTokens = tokens.cached_tokens || tokens.cache_read_input_tokens || 0;
       const entryCost = r.cost || 0;
       const providerDisplayName = providerNodeNameMap[r.provider] || r.provider;
+      // Stored at write time (see saveRequestUsage). Absent on rows written
+      // before the breakdown existed — those fall back to token-share on the
+      // client, which is why the client still keeps that path.
+      const meta = parseJson(r.meta, {}) || {};
+      const bd = meta.costBreakdown;
+      const addBreakdown = (target) => {
+        if (!bd) return;
+        target.inputCost = (target.inputCost || 0) + (bd.input || 0);
+        target.cachedCost = (target.cachedCost || 0) + (bd.cached || 0);
+        target.outputCost = (target.outputCost || 0) + (bd.output || 0);
+        target.reasoningCost = (target.reasoningCost || 0) + (bd.reasoning || 0);
+        target.cacheCreationCost = (target.cacheCreationCost || 0) + (bd.cacheCreation || 0);
+      };
 
       stats.totalPromptTokens += promptTokens;
       stats.totalCompletionTokens += completionTokens;
@@ -804,6 +975,7 @@ export async function getUsageStats(period = "all") {
       stats.byProvider[r.provider].completionTokens += completionTokens;
       stats.byProvider[r.provider].cachedTokens += cachedTokens;
       stats.byProvider[r.provider].cost += entryCost;
+      addBreakdown(stats.byProvider[r.provider]);
 
       const modelKey = r.provider ? `${r.model} (${r.provider})` : r.model;
       if (!stats.byModel[modelKey]) {
@@ -814,6 +986,7 @@ export async function getUsageStats(period = "all") {
       stats.byModel[modelKey].completionTokens += completionTokens;
       stats.byModel[modelKey].cachedTokens += cachedTokens;
       stats.byModel[modelKey].cost += entryCost;
+      addBreakdown(stats.byModel[modelKey]);
       if (new Date(r.timestamp) > new Date(stats.byModel[modelKey].lastUsed)) stats.byModel[modelKey].lastUsed = r.timestamp;
 
       if (r.connectionId) {
@@ -827,6 +1000,7 @@ export async function getUsageStats(period = "all") {
         stats.byAccount[accountKey].completionTokens += completionTokens;
         stats.byAccount[accountKey].cachedTokens += cachedTokens;
         stats.byAccount[accountKey].cost += entryCost;
+        addBreakdown(stats.byAccount[accountKey]);
         if (new Date(r.timestamp) > new Date(stats.byAccount[accountKey].lastUsed)) stats.byAccount[accountKey].lastUsed = r.timestamp;
       }
 
@@ -840,6 +1014,7 @@ export async function getUsageStats(period = "all") {
         }
         const ake = stats.byApiKey[akKey];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
+        addBreakdown(ake);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       } else {
         if (!stats.byApiKey["local-no-key"]) {
@@ -847,6 +1022,7 @@ export async function getUsageStats(period = "all") {
         }
         const ake = stats.byApiKey["local-no-key"];
         ake.requests++; ake.promptTokens += promptTokens; ake.completionTokens += completionTokens; ake.cachedTokens += cachedTokens; ake.cost += entryCost;
+        addBreakdown(ake);
         if (new Date(r.timestamp) > new Date(ake.lastUsed)) ake.lastUsed = r.timestamp;
       }
 
@@ -857,9 +1033,14 @@ export async function getUsageStats(period = "all") {
       }
       const epe = stats.byEndpoint[epKey];
       epe.requests++; epe.promptTokens += promptTokens; epe.completionTokens += completionTokens; epe.cachedTokens += cachedTokens; epe.cost += entryCost;
+      addBreakdown(epe);
       if (new Date(r.timestamp) > new Date(epe.lastUsed)) epe.lastUsed = r.timestamp;
     }
   }
+
+  // Any bucket whose split doesn't sum to its cost (mixed legacy/breakdown rows)
+  // is stripped back to the token-share fallback — see dropBadParts.
+  dropBadParts([stats.byProvider, stats.byModel, stats.byAccount, stats.byApiKey, stats.byEndpoint]);
 
   stats.totalRequests = Object.values(stats.byProvider).reduce((sum, p) => sum + (p.requests || 0), 0);
   return stats;
