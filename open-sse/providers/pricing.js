@@ -493,6 +493,77 @@ export function activeTimeRule(pricing, at = new Date()) {
   return null;
 }
 
+/** A rule's window as [start, end) minute segments — two when it wraps midnight. */
+function windowSegments(rule) {
+  const from = minutesOfDay(rule.from);
+  const to = minutesOfDay(rule.to);
+  if (from === null || to === null) return null;
+  const segs = from < to ? [[from, to]] : from > to ? [[from, 1440], [0, to]] : [];
+  // A zero-length window (from === to) can never contain a minute, so it has no
+  // segments — same as `activeTimeRule` never matching it.
+  return segs;
+}
+
+const ruleDays = (rule) =>
+  Array.isArray(rule.days) && rule.days.length ? rule.days : [0, 1, 2, 3, 4, 5, 6];
+
+/**
+ * Rules that can never take effect: `activeTimeRule` returns the FIRST match, so
+ * a rule whose window is fully covered by an earlier rule on every day it
+ * applies to is dead weight — it silently never fires.
+ *
+ * This is the shape of a real misconfiguration: an override carrying
+ * `01:00–16:00` alongside the genuine `06:00–10:00` peak window shadows the
+ * latter, and the whole 01:00–16:00 span bills at the peak rate.
+ *
+ * Rules in different time zones are compared in their own frames, which are not
+ * the same clock — so only same-zone rules can shadow each other. Both sides of
+ * a comparison default to UTC, matching how the windows are evaluated.
+ *
+ * @param {Array} rules
+ * @returns {number[]} indices of the shadowed rules, in order
+ */
+export function shadowedRules(rules) {
+  if (!Array.isArray(rules)) return [];
+  const shadowed = [];
+  for (let i = 0; i < rules.length; i++) {
+    const segs = windowSegments(rules[i]);
+    if (!segs) continue;
+    const tz = rules[i].tz || "UTC";
+    const days = ruleDays(rules[i]);
+
+    let live = false;
+    for (const day of days) {
+      // Cut this rule's window by every earlier rule that also fires on `day`.
+      let remaining = segs;
+      for (let j = 0; j < i && remaining.length; j++) {
+        if ((rules[j].tz || "UTC") !== tz) continue;
+        if (!ruleDays(rules[j]).includes(day)) continue;
+        const cut = windowSegments(rules[j]);
+        if (!cut) continue;
+        const next = [];
+        for (const [a, b] of remaining) {
+          let parts = [[a, b]];
+          for (const [ca, cb] of cut) {
+            parts = parts.flatMap(([x, y]) => {
+              if (cb <= x || ca >= y) return [[x, y]];
+              const out = [];
+              if (ca > x) out.push([x, ca]);
+              if (cb < y) out.push([cb, y]);
+              return out;
+            });
+          }
+          next.push(...parts);
+        }
+        remaining = next;
+      }
+      if (remaining.length) { live = true; break; }
+    }
+    if (!live) shadowed.push(i);
+  }
+  return shadowed;
+}
+
 /**
  * Merge the active time rule's rates over the base rates. Returns the input
  * object unchanged when no rule matches (or when there are no rules).

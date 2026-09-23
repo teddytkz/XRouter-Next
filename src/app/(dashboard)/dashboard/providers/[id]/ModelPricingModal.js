@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import PropTypes from "prop-types";
 import { Modal, Button } from "@/shared/components";
+import { shadowedRules } from "open-sse/providers/pricing.js";
 
 // Only the three rates the user edits. `reasoning` / `cache_creation` are NOT in
 // the payload: an override is merged over the resolved base rates, so omitting
@@ -134,7 +135,26 @@ export default function ModelPricingModal({ isOpen, onClose, provider, modelId, 
       }
       cleanRules.push(entry);
     }
-    if (cleanRules.length) payload.rules = cleanRules;
+
+    // A rule fully covered by an earlier one never fires (the engine takes the
+    // first match), so it silently does nothing while the earlier, wider window
+    // bills at the peak rate — the misconfiguration this guard exists to catch.
+    // Warn rather than refuse: an overlapping schedule is sometimes deliberate.
+    const shadowed = shadowedRules(cleanRules);
+    if (shadowed.length) {
+      const list = shadowed.map((i) => `${cleanRules[i].from}–${cleanRules[i].to}`).join(", ");
+      if (!confirm(
+        `These rules can never take effect: ${list}.\n\n` +
+        "An earlier rule already covers every hour they apply to, and the first " +
+        "matching rule wins — so the earlier one is what actually gets charged.\n\n" +
+        "Save anyway?"
+      )) return;
+    }
+
+    // Send the array whenever the rules shown were non-empty OR the user touched
+    // anything, so clearing the last rule actually clears the schedule. Omitting
+    // the key keeps the base rules, which made "remove all rules" a no-op.
+    if (cleanRules.length || isOverride) payload.rules = cleanRules;
 
     setSaving(true);
     try {

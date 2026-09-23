@@ -593,17 +593,26 @@ export async function recalculateCosts() {
       // Shift every figure by the same factor so none goes negative AND the
       // day-total/breakdown identity survives. Clamping day.cost and each bucket
       // independently (the old behaviour) let them disagree.
-      // `factor` only shrinks when a stored figure is already negative (corrupt
-      // legacy row) — then the day is left untouched rather than half-applied.
+      //
+      // Two bounds, both of the form `stored + diff*factor >= 0`:
+      //   • per bucket — `stored / -diff`, so no shrinking bucket goes negative
+      //   • the day total — `day.cost / -total`, which only bites when the day
+      //     aggregate covers more than the history behind it (legacy/pruned rows)
+      // The minimum of the two keeps every figure non-negative AND moves the day
+      // total by the full delta whenever the day is fully backed by its history.
+      // Dividing one bucket's stored cost by the WHOLE day's delta — the previous
+      // form — shrank the shift far too hard: one tiny endpoint bucket ($0.00002)
+      // froze an entire day's reduction, leaving the day total and its breakdowns
+      // permanently higher than the history behind them.
       let factor = 1;
       if (dayDelta && dayDelta.total < 0) {
-        let headroom = Math.max(0, day.cost || 0);
+        factor = Math.min(factor, Math.max(0, day.cost || 0) / -dayDelta.total);
         for (const [bucket, keys] of Object.entries(dayDelta.buckets)) {
           for (const [key, diff] of Object.entries(keys)) {
-            if (diff < 0) headroom = Math.min(headroom, Math.max(0, day[bucket][key].cost || 0));
+            if (diff >= 0) continue;
+            factor = Math.min(factor, Math.max(0, day[bucket][key].cost || 0) / -diff);
           }
         }
-        factor = Math.min(1, headroom / -dayDelta.total);
       }
 
       if (dayDelta) {
