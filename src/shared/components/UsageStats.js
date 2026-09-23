@@ -267,7 +267,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(false);
   const [tableView, setTableView] = useState("model");
-  const [viewMode, setViewMode] = useState("costs");
   const [providers, setProviders] = useState([]);
   const [periodLocal, setPeriodLocal] = useState("today");
   const isInitialLoad = useRef(true);
@@ -556,20 +555,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
               <option key={opt.value} value={opt.value}>{opt.label}</option>
             ))}
           </select>
-          <div className="grid grid-cols-2 items-center gap-1 rounded-lg border border-border bg-bg-subtle p-1 sm:flex">
-            <button
-              onClick={() => setViewMode("costs")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "costs" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
-              Costs
-            </button>
-            <button
-              onClick={() => setViewMode("tokens")}
-              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors ${viewMode === "tokens" ? "bg-primary text-white shadow-sm" : "text-text-muted hover:text-text hover:bg-bg-hover"}`}
-            >
-              Tokens
-            </button>
-          </div>
         </div>
         {loading ? spinner : activeTableConfig && (
           <UsageTable
@@ -580,7 +565,6 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
             sortBy={sortBy}
             sortOrder={sortOrder}
             onToggleSort={toggleSort}
-            viewMode={viewMode}
             storageKey={activeTableConfig.storageKey}
             renderSummaryCells={activeTableConfig.renderSummaryCells}
             renderDetailCells={activeTableConfig.renderDetailCells}

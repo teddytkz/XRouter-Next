@@ -6,7 +6,8 @@ import Card from "@/shared/components/Card";
 import Badge from "@/shared/components/Badge";
 
 const fmt = (n) => new Intl.NumberFormat().format(n || 0);
-const fmtCost = (n) => `$${(n || 0).toFixed(2)}`;
+// 4 decimals, not 2: per-1M rates and sub-cent costs ($0.006) vanish at 2.
+const fmtCost = (n) => `$${Number((n || 0).toFixed(4))}`;
 
 function fmtTime(iso) {
   if (!iso) return "Never";
@@ -29,52 +30,50 @@ SortIcon.propTypes = {
 };
 
 /**
- * Render 3 token or cost cells based on viewMode
+ * One usage column, two lines: the token count, then the cost it incurred and
+ * the per-1M rate that implies (`1,000,000` / `$0.006 ~ $0.006/1M`). The `~` is
+ * honest — the cost split is a token-share allocation, not a per-rate recompute.
  */
-function ValueCells({ item, viewMode, isSummary = false }) {
-  if (viewMode === "tokens") {
-    return (
-      <>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.promptTokens === undefined ? "—" : fmt(item.promptTokens)}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {item.cachedTokens ? fmt(item.cachedTokens) : "—"}
-        </td>
-        <td className="px-6 py-3 text-right text-text-muted">
-          {isSummary && item.completionTokens === undefined ? "—" : fmt(item.completionTokens)}
-        </td>
-        <td className="px-6 py-3 text-right font-medium">
-          {fmt(item.totalTokens)}
-        </td>
-      </>
-    );
-  }
+function ValueCell({ tokens, cost }) {
+  const t = tokens || 0;
+  const perM = t > 0 ? ((cost || 0) / t) * 1e6 : null;
+  return (
+    <td className="px-6 py-3 text-right">
+      <div className="font-medium tabular-nums">{fmt(t)}</div>
+      <div className="whitespace-nowrap text-xs text-text-muted">
+        {fmtCost(cost)}
+        {perM !== null && <> ~ {fmtCost(perM)}/1M</>}
+      </div>
+    </td>
+  );
+}
+
+ValueCell.propTypes = {
+  tokens: PropTypes.number,
+  cost: PropTypes.number,
+};
+
+function ValueCells({ item }) {
+  const cached = item.cachedTokens || 0;
+  // cached is a subset of prompt, so peel it out: the Input cell then shows the
+  // fresh tokens whose share is what inputCost was allocated from.
+  const freshInput = Math.max(0, (item.promptTokens || 0) - cached);
   return (
     <>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.inputCost === undefined ? "—" : fmtCost(item.inputCost)}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {item.cachedCost ? fmtCost(item.cachedCost) : "—"}
-      </td>
-      <td className="px-6 py-3 text-right text-text-muted">
-        {isSummary && item.outputCost === undefined ? "—" : fmtCost(item.outputCost)}
-      </td>
-      <td className="px-6 py-3 text-right font-medium">
-        {fmt(item.totalTokens)}
-      </td>
-      <td className="px-6 py-3 text-right font-medium text-warning">
-        {fmtCost(item.totalCost || item.cost)}
-      </td>
+      <ValueCell tokens={freshInput} cost={item.inputCost} />
+      {cached > 0 ? (
+        <ValueCell tokens={cached} cost={item.cachedCost} />
+      ) : (
+        <td className="px-6 py-3 text-right text-text-muted">—</td>
+      )}
+      <ValueCell tokens={item.completionTokens} cost={item.outputCost} />
+      <ValueCell tokens={item.totalTokens} cost={item.totalCost || item.cost} />
     </>
   );
 }
 
 ValueCells.propTypes = {
   item: PropTypes.object.isRequired,
-  viewMode: PropTypes.string.isRequired,
-  isSummary: PropTypes.bool,
 };
 
 /**
@@ -88,7 +87,6 @@ ValueCells.propTypes = {
  * @param {string} props.sortBy - Current sort field
  * @param {string} props.sortOrder - Current sort order
  * @param {function} props.onToggleSort - Sort toggle handler
- * @param {string} props.viewMode - "tokens" or "costs"
  * @param {string} props.storageKey - localStorage key for expanded state
  * @param {function} props.renderGroupLabel - Render group summary first cell content
  * @param {function} props.renderDetailCells - Render detail row custom cells (before value cells)
@@ -103,7 +101,6 @@ export default function UsageTable({
   sortBy,
   sortOrder,
   onToggleSort,
-  viewMode,
   storageKey,
   renderDetailCells,
   renderSummaryCells,
@@ -138,23 +135,15 @@ export default function UsageTable({
     });
   }, []);
 
-  const valueColumns = useMemo(() => {
-    if (viewMode === "tokens") {
-      return [
-        { field: "promptTokens", label: "Input Tokens" },
-        { field: "cachedTokens", label: "Cached" },
-        { field: "completionTokens", label: "Output Tokens" },
-        { field: "totalTokens", label: "Tokens" },
-      ];
-    }
-    return [
-      { field: "promptTokens", label: "Input Cost" },
-      { field: "cachedCost", label: "Cached Cost" },
-      { field: "completionTokens", label: "Output Cost" },
-      { field: "totalTokens", label: "Tokens" },
-      { field: "cost", label: "Total Cost" },
-    ];
-  }, [viewMode]);
+  // Each column shows tokens and cost together, so there is no view toggle and
+  // no separate "Tokens"/"Total Cost" pair — sorting falls back to the token
+  // field, which is what the old token view sorted on.
+  const valueColumns = useMemo(() => [
+    { field: "promptTokens", label: "Input" },
+    { field: "cachedTokens", label: "Cached" },
+    { field: "completionTokens", label: "Output" },
+    { field: "totalTokens", label: "Total" },
+  ], []);
 
   const totalColSpan = columns.length + valueColumns.length;
 
@@ -208,7 +197,7 @@ export default function UsageTable({
                     </div>
                   </td>
                   {renderSummaryCells(group)}
-                  <ValueCells item={group.summary} viewMode={viewMode} isSummary />
+                  <ValueCells item={group.summary} />
                 </tr>
                 {/* Detail rows */}
                 {expanded.has(group.groupKey) && group.items.map((item) => (
@@ -217,7 +206,7 @@ export default function UsageTable({
                     className="group-detail hover:bg-bg-subtle/20 transition-colors"
                   >
                     {renderDetailCells(item)}
-                    <ValueCells item={item} viewMode={viewMode} />
+                    <ValueCells item={item} />
                   </tr>
                 ))}
               </Fragment>
@@ -248,7 +237,6 @@ UsageTable.propTypes = {
   sortBy: PropTypes.string.isRequired,
   sortOrder: PropTypes.string.isRequired,
   onToggleSort: PropTypes.func.isRequired,
-  viewMode: PropTypes.string.isRequired,
   storageKey: PropTypes.string.isRequired,
   renderDetailCells: PropTypes.func.isRequired,
   renderSummaryCells: PropTypes.func.isRequired,
