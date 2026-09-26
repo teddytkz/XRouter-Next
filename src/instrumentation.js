@@ -10,5 +10,11 @@ export async function register() {
 
     const { startModelCatalogSync } = await import("@/lib/modelCatalog/sync.js");
     startModelCatalogSync();
+
+    // Proactive OAuth token refresh. Must start from instrumentation (runs once
+    // per server process); app/layout.js is prerendered at build time, so its
+    // initializeApp bootstrap never executes in a production server.
+    const { startBackgroundTokenRefresh } = await import("@/sse/services/backgroundTokenRefresh.js");
+    startBackgroundTokenRefresh();
   }
 }
