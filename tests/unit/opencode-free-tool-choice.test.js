@@ -15,15 +15,15 @@ const CREDS = { connectionId: "opencode-free-tool-choice-test" };
 const INPUT = [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }];
 const TOOLS = [{ type: "function", name: "get_weather", description: "w", parameters: { type: "object", properties: {} } }];
 
-// The free tier additionally requires the "bash"+"read" fingerprint stubs, which
-// the executor appends after the client's own tools (see ensureFingerprintTools).
+// The free tier also requires the fingerprint quartet (bash/glob/grep/read), which
+// the executor appends after the client's own tools (see opencodeFingerprint.js).
 const STUB = (name) => ({
   type: "function",
   name,
-  description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
+  description: "This tool is currently unavailable and must not be used.",
   parameters: { type: "object", properties: {} },
 });
-const TOOLS_WITH_STUBS = [...TOOLS, STUB("bash"), STUB("read")];
+const TOOLS_WITH_STUBS = [...TOOLS, ...[["bash"], ["glob"], ["grep"], ["read"]].map(([n]) => STUB(n))];
 
 function responsesBody(model, toolChoice) {
   const body = { model, input: structuredClone(INPUT), tools: structuredClone(TOOLS) };
@@ -63,7 +63,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     const absentOut = new OpenCodeExecutor().transformRequest(
       FREE_13, responsesBody(FREE_13, undefined), true, CREDS,
     );
-    expect("tool_choice" in absentOut).toBe(false);
+    expect(absentOut.tool_choice).toBe("auto");
     expect(absentOut.tools).toEqual(TOOLS_WITH_STUBS);
     expect(absentOut.input).toEqual(INPUT);
   });
@@ -87,7 +87,6 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     const { url, transformedBody } = await ex.execute({
       model: FREE_13, body, stream: true, credentials: CREDS,
     });
-
     expect(url).toBe("https://opencode.ai/zen/v1/responses");
     expect(transformedBody.tool_choice).toBe("auto");
     expect(proxyAwareFetch).toHaveBeenCalledTimes(1);

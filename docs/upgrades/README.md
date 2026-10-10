@@ -47,21 +47,25 @@ yang tadinya lulus jadi gagal.** Kegagalan pre-existing yang normal:
 |---|---|
 | Fork | XRouter-Next (`teddytkz/XRouter-Next`) |
 | Upstream | `/home/momo/9router/9router` (`decolua/9router`), remote `upstream` |
-| Sync terakhir (upstream) | **`8e15f0bd`** — rilis v0.5.79 (2026-09-18) |
-| Upstream tip saat sync | `a8c9d380` — v0.5.81 (hanya bump versi, tidak ada substansi) |
-| Sync sebelumnya (upstream) | `6d11ebc0` — v0.5.75 |
-| HEAD fork saat sync | `3b945603` |
-| Versi fork | `0.1.1` (jalur versi sendiri — bump upstream tidak diikuti) |
-| Tanggal sync | 2026-09-20 |
+| Sync terakhir (upstream) | **`ce4460ef`** — rilis v0.5.99 (2026-10-08) |
+| Upstream tip saat sync | `ce4460ef` — v0.5.99 (sama, sudah di tip) |
+| Sync sebelumnya (upstream) | `8e15f0bd` — v0.5.79 |
+| HEAD fork saat sync | `d860a300` (v0.1.4) |
+| Versi fork | `0.1.4` (jalur versi sendiri — bump upstream tidak diikuti) |
+| Tanggal sync | 2026-10-10 |
 
 ### Next check
 
-Mulai dari `a8c9d380` (upstream tip). v0.5.79 sudah di-port habis; v0.5.81 hanya
-bump versi sehingga tidak ada yang perlu diambil. Sync berikutnya:
+Mulai dari `ce4460ef` (upstream tip). v0.5.99 sudah di-merge habis. Sync berikutnya:
 
 ```bash
-git log --oneline a8c9d380..upstream/master
+git fetch upstream
+git log --oneline ce4460ef..upstream/master
 ```
+
+Rentang v0.5.79→v0.5.99 berisi 151 commit — terlalu besar untuk cherry-pick
+satu-satu, jadi sync ini memakai `git merge --no-commit --no-ff upstream/master`
+(48 file konflik, diselesaikan manual). Lihat `v0.5.99-2026-10-10.md`.
 
 ### Catatan penting untuk sync berikutnya
 
@@ -84,3 +88,4 @@ gambaran sistem.
 |---|---|---|---|---|
 | v0.5.69 → v0.5.75 | `6d11ebc0` | 2026-09-10 | — (belum ada ledger) | 11 file konflik, digabung manual |
 | v0.5.76 → v0.5.79 | `8e15f0bd` | 2026-09-20 | [v0.5.79-2026-09-20.md](./v0.5.79-2026-09-20.md) | 21 commit: 17 cherry-pick + 4 manual |
+| v0.5.79 → v0.5.99 | `ce4460ef` | 2026-10-10 | [v0.5.99-2026-10-10.md](./v0.5.99-2026-10-10.md) | 151 commit via merge: 48 file konflik, 0 regresi |

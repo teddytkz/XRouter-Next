@@ -64,6 +64,11 @@ describe("OpenCode Free Muse Spark thinking", () => {
   });
 
   it("routes Union Alpha through Anthropic Messages", () => {
+    const caps = getCapabilitiesForModel(PROVIDER, "union-alpha");
+    expect(caps.vision).toBe(true);
+    expect(caps.contextWindow).toBe(262144);
+    expect(caps.maxOutput).toBe(131072);
+
     const executor = new OpenCodeExecutor();
 
     expect(getModelTargetFormat("oc", "union-alpha")).toBe(FORMATS.CLAUDE);
@@ -201,16 +206,16 @@ describe("OpenCode Free Muse Spark thinking", () => {
     };
 
     const out = executor.transformRequest(model, body, true, {});
-
     expect(out.stream).toBe(true);
     expect(out.store).toBe(false);
     // Prior reasoning items stripped to prevent 400 "reasoning encrypted_content was not issued to this caller"
     expect(out.input.some((item) => item.type === "reasoning")).toBe(false);
     expect(JSON.stringify(out.input)).not.toContain("ENC_BLOB_TURN_1");
     // User message, function_call, function_call_output, and next user message survive
-    expect(out.input.map((item) => item.type)).toEqual(["message", "function_call", "function_call_output", "message"]);
-    // Tools flattened and empty properties added; the free-tier "bash"/"read"
-    // fingerprint stubs are appended after the client's own tools.
+    const types = out.input.map((item) => item.type);
+    expect(types).toEqual(["message", "function_call", "function_call_output", "message"]);
+    // Tools flattened and empty properties added; the free-tier fingerprint
+    // quartet (bash/glob/grep/read) is appended after the client's own tools.
     expect(out.tools).toEqual([
       {
         type: "function",
@@ -221,13 +226,25 @@ describe("OpenCode Free Muse Spark thinking", () => {
       {
         type: "function",
         name: "bash",
-        description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
+        description: "This tool is currently unavailable and must not be used.",
+        parameters: { type: "object", properties: {} },
+      },
+      {
+        type: "function",
+        name: "glob",
+        description: "This tool is currently unavailable and must not be used.",
+        parameters: { type: "object", properties: {} },
+      },
+      {
+        type: "function",
+        name: "grep",
+        description: "This tool is currently unavailable and must not be used.",
         parameters: { type: "object", properties: {} },
       },
       {
         type: "function",
         name: "read",
-        description: "Do not call this tool. It exists only for API compatibility and must never be invoked.",
+        description: "This tool is currently unavailable and must not be used.",
         parameters: { type: "object", properties: {} },
       },
     ]);

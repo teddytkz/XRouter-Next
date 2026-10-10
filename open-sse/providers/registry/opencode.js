@@ -17,26 +17,27 @@ export default {
     headers: {
       "x-opencode-client": "desktop",
     },
-    noAuth: true,
-    // The Zen free tier gates on `stream:true` in the BODY (a stream:false or
-    // absent body is a 403 FreeTierError even with the bash+read tools). Clients
-    // asking for JSON still get JSON — chatCore reshapes the SSE back
-    // (handleForcedSSEToJson).
     forceStream: true,
+    noAuth: true,
     quirks: {
-      // Muse Spark 1.3 Free rejects any tool_choice other than "auto" with HTTP 400
-      // (named function / "required" / "none"). Demoted at the Responses boundary
-      // in OpenCodeExecutor.transformRequest (PR #4062).
       forceAutoToolChoiceModels: ["muse-spark-1.3-contributor-free"],
     },
   },
   models: [
-    // Endpoint formats differ per model, so declare non-chat models explicitly:
-    // Muse Spark → /zen/v1/responses, Union Alpha → /zen/v1/messages (PR #4099).
+    // Endpoint formats differ per model, so declare non-chat models explicitly.
     { id: "muse-spark-1.2-contributor-free", name: "Muse Spark 1.2 Contributor Free", targetFormat: "openai-responses" },
     { id: "muse-spark-1.3-contributor-free", name: "Muse Spark 1.3 Contributor Free", targetFormat: "openai-responses" },
     { id: "union-alpha", name: "Union Alpha Free", targetFormat: "claude" },
+    { id: "jev-1.13-free", name: "Jev 1.13 Free", kind: "systemone" },
   ],
+  serviceKinds: ["llm", "systemone"],
+  systemoneConfig: {
+    baseUrl: "https://opencode.ai/zen/v1/systemone",
+    headers: {
+      "x-opencode-client": "desktop",
+      "User-Agent": "opencode/1.18.31",
+    },
+  },
   modelsFetcher: { url: "https://opencode.ai/zen/v1/models", type: "opencode-free" },
   passthroughModels: true,
 };

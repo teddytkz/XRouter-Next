@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { getProviderModels } from "../config/providerModels.js";
-import { modelTargetFormat } from "../providers/models/schema.js";
+import { getModelTargetFormat } from "../config/providerModels.js";
+import { FORMATS } from "../translator/formats.js";
 import {
   normalizeResponsesInput,
   clampResponsesCallId,
@@ -41,17 +41,10 @@ function translatedSession(sessionId, clientTool) {
   return `ses_${digest}`;
 }
 
-// Strip the thinking suffix "model(level)" so checks hit the base id.
-function baseModelId(model) {
-  return String(model || "").replace(/\([^()]+\)\s*$/, "").trim();
-}
-
-// Responses-only per the provider registry (grok-4.6, gpt-5.6-luna, muse-spark, …).
-// Reading the registry keeps this in sync with config — never hardcode model ids
-// here, and strip the thinking suffix so `gpt-5.6-luna(high)` resolves too (PR #4084).
+// Responses-only per the provider registry (grok-4.6, gpt-5.6-luna, muse-spark, …),
+// including the family-regex fallback for passthrough ids — never hardcode model ids here.
 function isResponsesModel(model) {
-  const entry = getProviderModels("opencode-go").find((m) => m.id === baseModelId(model));
-  return modelTargetFormat(entry) === "openai-responses";
+  return getModelTargetFormat("opencode-go", model) === FORMATS.OPENAI_RESPONSES;
 }
 
 // Flatten Chat Completions tool declarations into the Responses flat shape and
@@ -95,12 +88,9 @@ function sanitizeResponsesItems(body) {
   if (!Array.isArray(body.input)) return;
   body.input = body.input.filter((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return true;
-    // PR #4061: strip prior-turn reasoning items. Under store:false the Responses
-    // API binds `encrypted_content` to the issuing caller, so replaying it against
-    // a rotated upstream account/session fails with 400 "reasoning
-    // `encrypted_content` was not issued to this caller"; keeping the reasoning
-    // item without it fails as "Referenced reasoning item was not found or was
-    // deleted". Dropping the item outright fixes multi-turn and tool loops.
+    // Strip prior-turn reasoning items: Muse Spark contributor models route to
+    // an upstream Console backend where encrypted_content cannot be validated across
+    // rotated accounts or sessions, causing 400 "reasoning encrypted_content was not issued to this caller".
     if (item.type === "reasoning") return false;
     delete item.encrypted_content;
     delete item.reasoning_encrypted_content;

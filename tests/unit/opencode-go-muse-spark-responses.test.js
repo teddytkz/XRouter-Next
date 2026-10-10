@@ -153,9 +153,7 @@ describe("OpenCodeGoExecutor routing + sanitization", () => {
         { type: "function_call_output", call_id: "c1", output: "ok" },
       ],
     };
-
     const out = ex.transformRequest(MODEL, body, true, {});
-
     expect(out.input.some((i) => i.type === "reasoning")).toBe(false);
     expect(JSON.stringify(out.input)).not.toContain("ENC_BLOB_TURN_1");
     expect(out.input.map((i) => i.type)).toEqual(["message", "function_call", "function_call_output"]);

@@ -27,6 +27,8 @@ const SPECIALIZED = new Set([
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
+    // minimax-code mints a fresh UUID session id per buildHeaders call
+    if (k === "X-Mavis-Session-Id") { out[k] = "<UUID>"; continue; }
     out[k] = typeof v === "string"
       ? v.replace(/Bearer .+/, "Bearer <TOK>")
           .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")
