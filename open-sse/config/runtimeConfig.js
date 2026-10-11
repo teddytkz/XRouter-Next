@@ -96,3 +96,22 @@ export function resolveRetryEntry(entry) {
 export const SKIP_PATTERNS = [
   "Please write a 5-10 word title for the following conversation:"
 ];
+
+// Cap per-status retry attempts when many accounts are available: with 3+ accounts
+// the account-fallback loop already provides redundancy, so retrying a single
+// account many times just delays the switch. Ported from VansRouter.
+export function capRetryAttemptsByAccountCount(retryConfig, accountCount) {
+  if (!accountCount || accountCount < 3) return retryConfig;
+  const maxAttempts = accountCount >= 5 ? 1 : 2;
+  const capped = {};
+  for (const [status, entry] of Object.entries(retryConfig)) {
+    if (entry == null) {
+      capped[status] = entry;
+    } else if (typeof entry === "number") {
+      capped[status] = Math.min(entry, maxAttempts);
+    } else {
+      capped[status] = { ...entry, attempts: Math.min(entry.attempts ?? 0, maxAttempts) };
+    }
+  }
+  return capped;
+}

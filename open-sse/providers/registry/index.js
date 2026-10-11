@@ -138,6 +138,34 @@ import p135 from "./minimax-code-global.js";
 import p136 from "./bedrock.js";
 import p137 from "./bedrock-xai.js";
 import p138 from "./freebuff.js";
+import p139 from "./a6api.js";
+import p140 from "./ai21.js";
+import p141 from "./alibaba.js";
+import p142 from "./baseten.js";
+import p143 from "./bytez.js";
+import p144 from "./codestral.js";
+import p145 from "./databricks.js";
+import p146 from "./deepinfra.js";
+import p147 from "./friendliai.js";
+import p148 from "./galadriel.js";
+import p149 from "./gigachat.js";
+import p150 from "./heroku.js";
+import p151 from "./hive.js";
+import p152 from "./llamagate.js";
+import p153 from "./meta.js";
+import p154 from "./nanogpt.js";
+import p155 from "./nscale.js";
+import p156 from "./ovhcloud.js";
+import p157 from "./predibase.js";
+import p158 from "./publicai.js";
+import p159 from "./snowflake.js";
+import p160 from "./upstage.js";
+import p161 from "./volcengine.js";
+import p162 from "./wandb.js";
+import p163 from "./zenmux.js";
+import p164 from "./qwen.js";
+import p165 from "./agentrouter.js";
+import p166 from "./muse-spark-web.js";
 export default [
   p0,
   p1,
@@ -276,4 +304,32 @@ export default [
   p136,
   p137,
   p138,
+  p139,
+  p140,
+  p141,
+  p142,
+  p143,
+  p144,
+  p145,
+  p146,
+  p147,
+  p148,
+  p149,
+  p150,
+  p151,
+  p152,
+  p153,
+  p154,
+  p155,
+  p156,
+  p157,
+  p158,
+  p159,
+  p160,
+  p161,
+  p162,
+  p163,
+  p164,
+  p165,
+  p166,
 ];

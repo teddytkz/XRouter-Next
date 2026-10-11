@@ -41,6 +41,9 @@ export const QODER_CN_CONFIG = { ...PROVIDER_OAUTH["qoder-cn"] };
 // iFlow OAuth Configuration (Authorization Code)
 export const IFLOW_CONFIG = { ...PROVIDER_OAUTH["iflow"] };
 
+// Qwen Code OAuth Configuration (Device Code Flow with PKCE)
+export const QWEN_CONFIG = { ...PROVIDER_OAUTH["qwen"] };
+
 // Antigravity OAuth Configuration (Standard OAuth2 with Google)
 // clientId/clientSecret from ANTIGRAVITY_OAUTH_CLIENT (shared.js) — not stored in registry
 // loadCodeAssistClientMetadata is dynamic (runtime platform detection)

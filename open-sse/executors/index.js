@@ -30,6 +30,9 @@ import WindsurfExecutor from "./windsurf.js";
 import { DefaultExecutor } from "./default.js";
 import { MinimaxCodeExecutor } from "./minimax-code.js";
 import { DevinCliExecutor } from "./devin-cli.js";
+import { QwenExecutor } from "./qwen.js";
+import { AgentRouterExecutor } from "./agentrouter.js";
+import { MuseSparkWebExecutor } from "./muse-spark-web.js";
 
 const executors = {
   antigravity: new AntigravityExecutor(),
@@ -77,6 +80,10 @@ const executors = {
   // vertex / vertex-partner already uses.
   "bedrock-xai": new BedrockExecutor("bedrock-xai"),
   brx: new BedrockExecutor("bedrock-xai"), // Alias for bedrock-xai
+  qwen: new QwenExecutor(),
+  qw: new QwenExecutor(), // Alias for qwen
+  agentrouter: new AgentRouterExecutor(),
+  "muse-spark-web": new MuseSparkWebExecutor(),
 };
 
 const defaultCache = new Map();
