@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings, updateSettings } from "@/lib/localDb";
 import { applyOutboundProxyEnv } from "@/lib/network/outboundProxy";
 import { resetComboRotation } from "open-sse/services/combo.js";
+import { isStrongInitialPassword } from "@/lib/auth/password";
 import bcrypt from "bcryptjs";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +45,12 @@ export async function PATCH(request) {
 
     // If updating password, hash it
     if (body.newPassword) {
+      if (!isStrongInitialPassword(body.newPassword)) {
+        return NextResponse.json(
+          { error: "Password must be at least 12 characters and not a common placeholder." },
+          { status: 400, headers: SETTINGS_RESPONSE_HEADERS }
+        );
+      }
       const settings = await getSettings();
       const currentHash = settings.password;
 

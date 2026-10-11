@@ -89,3 +89,4 @@ gambaran sistem.
 | v0.5.69 → v0.5.75 | `6d11ebc0` | 2026-09-10 | — (belum ada ledger) | 11 file konflik, digabung manual |
 | v0.5.76 → v0.5.79 | `8e15f0bd` | 2026-09-20 | [v0.5.79-2026-09-20.md](./v0.5.79-2026-09-20.md) | 21 commit: 17 cherry-pick + 4 manual |
 | v0.5.79 → v0.5.99 | `ce4460ef` | 2026-10-10 | [v0.5.99-2026-10-10.md](./v0.5.99-2026-10-10.md) | 151 commit via merge: 48 file konflik, 0 regresi |
+| Port VansRouter | — (fork saudara) | 2026-10-11 | [v0.1.5-2026-10-11.md](./v0.1.5-2026-10-11.md) | 29 provider + token saver + security/ops hardening, 0 regresi |

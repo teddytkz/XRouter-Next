@@ -8,7 +8,7 @@ import {
   DEFAULT_RETRY_CONFIG,
   resolveRetryEntry,
 } from "../config/runtimeConfig.js";
-import { markPoolUnfit, clearPoolUnfit } from "../services/proxyPoolFitness.js";
+import { markPoolUnfit, clearPoolUnfit, loadPoolFitness, isPoolUnfit } from "../services/proxyPoolFitness.js";
 
 /**
  * Freebuff Executor — OpenAI-compatible chat completions on
@@ -430,6 +430,20 @@ export class FreebuffExecutor extends BaseExecutor {
       err.status = 409;
       err.resetsAtMs = lockUntil;
       throw err;
+    }
+    // Durable pool fitness (also shown on the dashboard Proxy Fitness page) is the
+    // source of truth across restarts and instances; the in-process
+    // poolLimitCooldowns map above only covers the current process. Refresh the
+    // cache on a miss, then honor it. Fail-open: an unreadable store leaves the
+    // pool usable.
+    if (poolId) {
+      if (!isPoolUnfit(poolId, scope)) await loadPoolFitness(poolId);
+      if (isPoolUnfit(poolId, scope)) {
+        const err = new Error(`Freebuff limited-mode IP rejected ${model} — this proxy pool is marked unfit. Use a full-access proxy or clear it on the Proxy Fitness page.`);
+        err.status = 409;
+        err.poolScoped = { poolId, scope, reason: "limited_ip" };
+        throw err;
+      }
     }
     const poolUntil = getCooldown(poolLimitCooldowns, `${proxyKey}::${model}`);
     if (poolUntil) {

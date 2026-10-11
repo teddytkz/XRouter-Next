@@ -7,6 +7,7 @@ import { isOidcConfigured } from "@/lib/auth/oidc";
 import { isSamlConfigured } from "@/lib/auth/saml.js";
 import { checkLock, recordFail, recordSuccess, getClientIp } from "@/lib/auth/loginLimiter";
 import { isLocalRequest } from "@/dashboardGuard";
+import { getInitialPassword, isPlaceholderPassword } from "@/lib/auth/password";
 
 const RESET_HINT = "Forgot password? Reset to default via 9Router CLI → Settings → Reset Password to Default.";
 const NO_STORE_HEADERS = { "Cache-Control": "no-store" };
@@ -51,21 +52,29 @@ export async function POST(request) {
     }
 
     let isValid = false;
+    // Resolve the effective initial password through the policy module: a weak
+    // INITIAL_PASSWORD (e.g. "password") in production resolves to null and is
+    // refused below instead of being accepted verbatim.
+    const initialPassword = getInitialPassword();
     if (storedHash) {
       isValid = await bcrypt.compare(password, storedHash);
+    } else if (!initialPassword) {
+      return NextResponse.json(
+        { error: "INITIAL_PASSWORD must be 123456 or a strong value (≥12 chars) before login." },
+        { status: 503, headers: NO_STORE_HEADERS }
+      );
     } else {
-      // Use env var or default
-      const initialPassword = process.env.INITIAL_PASSWORD || "123456";
       isValid = password === initialPassword;
     }
 
     if (isValid) {
       recordSuccess(ip);
 
-      // Default password still in use on a remote client → force a password
-      // change before the dashboard is exposed remotely (keeps local UX intact).
+      // Placeholder password (env unset → "123456", or INITIAL_PASSWORD set to a
+      // known default) still in use on a remote client → force a password change
+      // before the dashboard is exposed remotely (keeps local UX intact).
       const mustChangePassword =
-        !storedHash && !process.env.INITIAL_PASSWORD && !isLocalRequest(request);
+        !storedHash && isPlaceholderPassword(initialPassword) && !isLocalRequest(request);
 
       if (mustChangePassword) {
         // Do NOT issue a session token: a fresh install's default password is

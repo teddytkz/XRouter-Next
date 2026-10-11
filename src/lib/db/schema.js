@@ -75,6 +75,22 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_pp_status ON proxyPools(testStatus)",
     ],
   },
+  proxyPoolFitness: {
+    columns: {
+      poolId: "TEXT NOT NULL",
+      scope: "TEXT NOT NULL",
+      until: "INTEGER NOT NULL",
+      reason: "TEXT",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    primaryKey: "PRIMARY KEY (poolId, scope)",
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_ppf_pool ON proxyPoolFitness(poolId)",
+      "CREATE INDEX IF NOT EXISTS idx_ppf_scope ON proxyPoolFitness(scope)",
+      "CREATE INDEX IF NOT EXISTS idx_ppf_until ON proxyPoolFitness(until)",
+    ],
+  },
   apiKeys: {
     columns: {
       id: "TEXT PRIMARY KEY",

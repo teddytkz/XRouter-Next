@@ -12,7 +12,7 @@ export {
 // Provider connections
 export {
   getProviderConnections, getProviderConnectionById,
-  createProviderConnection, updateProviderConnection,
+  createProviderConnection, createProviderConnectionsBulk, updateProviderConnection,
   deleteProviderConnection, deleteProviderConnectionsByProvider,
   reorderProviderConnections, cleanupProviderConnections,
 } from "./repos/connectionsRepo.js";
@@ -28,6 +28,12 @@ export {
   getProxyPools, getProxyPoolById,
   createProxyPool, updateProxyPool, deleteProxyPool,
 } from "./repos/proxyPoolsRepo.js";
+
+// Proxy pool fitness (durable; consumed by proxy-pool fitness routes)
+export {
+  listProxyPoolFitness, upsertProxyPoolFitness,
+  deleteProxyPoolFitness, clearProxyPoolFitness, deleteProxyPoolFitnessByPool,
+} from "./repos/proxyPoolFitnessRepo.js";
 
 // API keys
 export {

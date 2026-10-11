@@ -381,6 +381,9 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
     connectionProxyUrl: credentials?.providerSpecificData?.connectionProxyUrl || "",
     connectionNoProxy: credentials?.providerSpecificData?.connectionNoProxy || "",
     vercelRelayUrl: credentials?.providerSpecificData?.vercelRelayUrl || "",
+    // Resolved pool id (set by getProviderCredentials). Freebuff reads this to
+    // mark/clear pool fitness, and proxyFetch uses it for the strict-proxy guard.
+    proxyPoolId: credentials?.providerSpecificData?.proxyPoolId || credentials?.providerSpecificData?.connectionProxyPoolId || null,
   };
 
   if (proxyOptions.vercelRelayUrl) {

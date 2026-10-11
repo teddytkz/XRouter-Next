@@ -8,6 +8,8 @@ import {
   isValidApiKey,
 } from "../services/auth.js";
 import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../services/antigravityQuota.js";
+import { readBoundedJson } from "../utils/boundedBody.js";
+import { maybeWaitForCooldown, MAX_COOLDOWN_RETRIES } from "open-sse/utils/cooldownRetry.js";
 import { getSettings } from "@/lib/localDb";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
@@ -50,7 +52,11 @@ function formatSkillReminder(name, prefix = "ECC Skill") {
 export async function handleChat(request, clientRawRequest = null) {
   let body;
   try {
-    body = await request.json();
+    // Bounded read: reject an oversized body before JSON.parse allocates it, and cap
+    // the bytes held in heap mid-stream. 413 rather than the generic 400.
+    const parsed = await readBoundedJson(request);
+    if (parsed.error) return parsed.error;
+    body = parsed.body;
   } catch {
     log.warn("CHAT", "Invalid JSON body");
     return errorResponse(HTTP_STATUS.BAD_REQUEST, "Invalid JSON body");
@@ -260,6 +266,11 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   let lastError = null;
   let lastStatus = null;
   let lastHeaders = null;
+  // Cooldown-aware retry: when ALL accounts are rate-limited with a near-term
+  // retryAfter, wait briefly (<=30s) and retry the whole loop once instead of
+  // returning 503 immediately. Bounded to 1 retry per request, aborted on client
+  // disconnect. Ported from VansRouter.
+  let cooldownRetries = 0;
 
   while (true) {
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
@@ -274,6 +285,25 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         return errorResponse(HTTP_STATUS.FORBIDDEN, `[${provider}/${model}] ${credentials.lastError}`);
       }
       if (credentials?.allRateLimited) {
+        // Cooldown-aware retry: if the earliest account comes off cooldown soon
+        // (<=30s), wait for it (aborted on client disconnect) then retry once.
+        if (credentials.retryAfter && cooldownRetries < MAX_COOLDOWN_RETRIES) {
+          const waitDecision = await maybeWaitForCooldown({
+            retryAfter: credentials.retryAfter,
+            retriesSoFar: cooldownRetries,
+            signal: request?.signal,
+          });
+          if (waitDecision.shouldRetry) {
+            cooldownRetries++;
+            log.info("CHAT", `[${provider}/${model}] all accounts rate-limited — waited ${waitDecision.waitedMs}ms, retrying`);
+            continue;
+          }
+          if (waitDecision.reason === "client_disconnected") {
+            log.info("CHAT", `[${provider}/${model}] client disconnected during cooldown wait — aborting`);
+            return new Response(null, { status: 499 });
+          }
+          log.info("CHAT", `[${provider}/${model}] cooldown retry skipped: ${waitDecision.reason}`);
+        }
         const errorMsg = lastError || credentials.lastError || "Unavailable";
         const status = HTTP_STATUS.SERVICE_UNAVAILABLE;
         log.warn("CHAT", `[${provider}/${model}] ${errorMsg} (${credentials.retryAfterHuman})`);
