@@ -1,6 +1,6 @@
 {
   "name": "xrouter-next",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "XRouter-Next CLI - Start and manage XRouter-Next server",
   "bin": {
     "xrouter-next": "./cli.js",
