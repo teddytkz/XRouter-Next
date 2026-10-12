@@ -267,6 +267,7 @@ const TABLE_OPTIONS = [
 ];
 
 const PERIODS = [
+  { value: "month", label: "This Month" },
   { value: "today", label: "Today" },
   { value: "24h", label: "24h" },
   { value: "7d", label: "7D" },

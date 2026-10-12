@@ -870,7 +870,9 @@ export async function getUsageStats(period = "all") {
   const useDailySummary = period !== "24h" && period !== "today";
 
   if (useDailySummary) {
-    const periodDays = { "7d": 7, "30d": 30, "60d": 60 };
+    // "month" = calendar month-to-date (1st → today), so its window is the
+    // elapsed day count; loadDaysInRange derives the cutoff from that.
+    const periodDays = { "7d": 7, "30d": 30, "60d": 60, "month": new Date().getDate() };
     const maxDays = periodDays[period] || null;
     const dayRows = loadDaysInRange(db, maxDays);
 
@@ -1199,7 +1201,11 @@ export async function getChartData(period = "7d") {
     });
   }
 
-  const bucketCount = period === "7d" ? 7 : period === "30d" ? 30 : 60;
+  // "month" = calendar month-to-date: one bucket per elapsed day (1st → today).
+  const bucketCount = period === "month" ? new Date().getDate()
+    : period === "7d" ? 7
+    : period === "30d" ? 30
+    : 60;
   const today = new Date();
 
   // Build map of dateKey → day data
