@@ -50,8 +50,8 @@ yang tadinya lulus jadi gagal.** Kegagalan pre-existing yang normal:
 | Sync terakhir (upstream) | **`ce4460ef`** — rilis v0.5.99 (2026-10-08) |
 | Upstream tip saat sync | `ce4460ef` — v0.5.99 (sama, sudah di tip) |
 | Sync sebelumnya (upstream) | `8e15f0bd` — v0.5.79 |
-| HEAD fork saat sync | `d860a300` (v0.1.4; versi fork kini `0.1.5` di `2c4cf642`) |
-| Versi fork | `0.1.5` (jalur versi sendiri — bump upstream tidak diikuti) |
+| HEAD fork saat sync | `d860a300` (v0.1.4; versi fork kini `0.1.6` di 2026-10-12) |
+| Versi fork | `0.1.6` (jalur versi sendiri — bump upstream tidak diikuti) |
 | Tanggal sync | 2026-10-10 |
 
 ### Next check

@@ -5,19 +5,23 @@
   
   **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
   
-  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
+  **Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 122 providers & 1,300+ model entries.**
   
-  [![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-  [![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-  [![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-  [![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+  [![npm](https://img.shields.io/npm/v/xrouter-next.svg)](https://www.npmjs.com/package/xrouter-next)
+  [![Downloads](https://img.shields.io/npm/dm/xrouter-next.svg)](https://www.npmjs.com/package/xrouter-next)
+  [![License](https://img.shields.io/npm/l/xrouter-next.svg)](https://github.com/teddytkz/XRouter-Next/blob/main/LICENSE)
+  [![GitHub](https://img.shields.io/badge/GitHub-teddytkz%2FXRouter--Next-blue?logo=github)](https://github.com/teddytkz/XRouter-Next)
 
 <a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
-[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Website](https://9router.com)
+<sub>Trendshift badge belongs to upstream `decolua/9router`.</sub>
+
+[🚀 Quick Start](#-quick-start) • [💡 Features](#-key-features) • [📖 Setup](#-setup-guide) • [🌐 Fork repo](https://github.com/teddytkz/XRouter-Next) • [🔀 Fork changes](https://github.com/teddytkz/XRouter-Next/blob/development/CHANGELOG.md) • [⬆️ Upstream](https://github.com/decolua/9router)
 
 [🇧🇷 Português (Brasil)](./i18n/README.pt-BR.md) • [🇻🇳 Tiếng Việt](./i18n/README.vi.md) • [🇨🇳 中文](./i18n/README.zh-CN.md) • [🇯🇵 日本語](./i18n/README.ja-JP.md) • [🇷🇺 Русский](./i18n/README.ru.md) • [🇹🇭 ไทย](./i18n/README.th.md) • [🇮🇷 فارسی](./i18n/README.fa_IR.md) • [🇮🇩 Indonesia](./i18n/README.id-ID.md) • [🇪🇸 Español](./i18n/README.es.md) • [🇫🇷 Français](./i18n/README.fr.md)
+
+> Those translated READMEs are the upstream 9Router docs kept for reference — they document the upstream npm
+> package. This English README is the authoritative one for XRouter-Next.
 
 </div>
 
@@ -40,6 +44,15 @@
 - ✅ **Auto fallback** - Subscription → Cheap → Free, zero downtime
 - ✅ **Multi-account** - Round-robin between accounts per provider
 - ✅ **Universal** - Works with Claude Code, Codex, Cursor, Cline, any CLI tool
+
+**What this fork adds on top of upstream 9Router:**
+
+- ✅ **122 providers** (upstream: 93) and 1,340 model entries — the extra 29 plus its own executors and icons
+- ✅ **Price control** — per-model editor, time-of-day/peak pricing rules, `/dashboard/pricing`, recalculate history
+- ✅ **Skills & custom rules** — system-prompt / pre-route / post-response hooks, ECC auto skill router
+- ✅ **Routing health** — EMA latency, circuit breaker, SSE sparkline stream, durable proxy-pool fitness
+- ✅ **Hermes agent** — lifecycle card (start/stop/restart/logs/install/update), memory injection + extraction, Telegram gateway
+- ✅ **Ops** — `/setup` wizard, autostart toggle, npm-registry update check with in-dashboard auto-update
 
 ---
 
@@ -76,9 +89,12 @@ Result: Never stop coding, minimal cost + 20-40% token savings via RTK
 **1. Install globally:**
 
 ```bash
-npm install -g 9router
-9router
+npm install -g xrouter-next
+xrouter-next
 ```
+
+> If `npm view xrouter-next version` reports a version below `0.1.6`, the published package predates the
+> fork-local features above — run from source or install the packed `.tgz` in the repo root instead.
 
 🎉 Dashboard opens at `http://localhost:20128`
 
@@ -99,7 +115,7 @@ Claude Code/Codex/OpenClaw/Cursor/Cline Settings:
 
 **Alternative: run from source (this repository):**
 
-This repository package is private (`9router-app`), so source/Docker execution is the expected local development path.
+This repository's server package is private (`xrouter-next`), so source/Docker execution is the expected local development path.
 
 ```bash
 cp .env.example .env
@@ -340,6 +356,12 @@ Default URLs:
 
 ## 🌐 Supported Providers
 
+**122 routable LLM providers** and **1,340 model entries** ship in the registry — **162 entries total, 151 after
+the `hidden` flag**, of which 115 are LLM and 36 media-only (speech, image, search) entries the Providers page
+folds away. Category counts below are the visible registry numbers; the Providers page further filters API-key
+cards to LLM ones (105 → 70). Registry layout and the "how to add one" recipe are in
+[`open-sse/AGENTS.md`](./open-sse/AGENTS.md); model catalogs live in `open-sse/config/providerModels.js`.
+
 ### 🔐 OAuth Providers
 
 <div align="center">
@@ -403,7 +425,7 @@ Default URLs:
 > **OpenCode Free** model list fluctuates over time (some models free only for limited promos) — subject to change without notice.
 > **Vertex AI**: the $300 free credit for new GCP accounts is still valid, but since Mar 2026 the **Gemini API endpoint no longer consumes these credits** — call the **Vertex AI Studio** endpoint instead.
 
-### 🔑 API Key Providers (40+)
+### 🔑 API Key Providers (105)
 
 <div align="center">
   <table>
@@ -486,7 +508,8 @@ Default URLs:
       </td>
     </tr>
   </table>
-  <p><i>...and 20+ more providers including Nebius, Chutes, Hyperbolic, and custom OpenAI/Anthropic compatible endpoints</i></p>
+  <p><i>18 of the 105 logos are shown; the rest are on the Providers dashboard. Plus Nebius, Chutes, Hyperbolic,
+  and any custom OpenAI/Anthropic-compatible endpoint.</i></p>
 </div>
 
 ### 🏠 Self-hosted Providers
@@ -548,6 +571,13 @@ a third party under a provider named "Self-hosted".
 | 📝 **Request Logging**                                                            | Debug mode with full request/response logs                                               | Troubleshoot issues easily                        |
 | 💾 **Cloud Sync**                                                                 | Sync config across devices                                                               | Same setup everywhere                             |
 | 📊 **Usage Analytics**                                                            | Track tokens, cost, trends over time                                                     | Optimize spending                                 |
+| 💵 **Price Editor + Time-of-Day Rules**                                           | Per-model $/1M editor on the provider page, plus peak/off-peak windows (UTC, tz, weekday filters) | Correct cost for schedules like DeepSeek off-peak |
+| 🧾 **Pricing Page** (`/dashboard/pricing`)                                        | Every provider × model with the rate in effect; scheduled models show a separate peak row | See what a request will actually bill            |
+| 🔁 **Recalculate Costs**                                                          | Re-price all stored requests with the current tables and shift daily aggregates by the same delta | Fix history after a pricing change               |
+| 📈 **Provider Activity**                                                          | Live per-provider model chips; blinking dot + polling while requests are in flight | See what is running right now                    |
+| 🧩 **Skills & Custom Rules** (`/dashboard/next-feature`)                          | Custom system-prompt / pre-route / post-response hooks, ECC auto skill router, skill registry | Extend routing without forking the code          |
+| 🛡️ **Security Hardening**                                                         | 8 MB bounded body (413), `classify429` cooldowns, password strength policy, cooldown-aware retry | Fail closed instead of silently degrading         |
+| 🩺 **Routing Health**                                                              | EMA latency, rolling success rate, circuit breaker per provider + SSE sparkline stream | Know which provider is sick before you send       |
 | 🌐 **Deploy Anywhere**                                                            | Localhost, VPS, Docker, Cloudflare Workers                                               | Flexible deployment options                       |
 
 Set `X-9Router-Token-Saver: off` to bypass all token savers for one chat request.
@@ -700,6 +730,110 @@ Seamless translation between formats:
 >
 > Think of it as a "savings tracker" showing how much you're saving by using free models or
 > routing through 9Router!
+
+#### Usage periods
+
+Period selector covers `Today`, `24h`, `7d`, `30d`, `60d`, `This Month`, and `All`. **This Month** buckets by
+calendar day from the 1st up to today, so the chart resets when the month rolls over instead of sliding.
+
+#### Provider activity
+
+`ProviderActivityList` replaces the old topology graph. Each row is one provider with a status light and the
+models it served in the last 24 hours as chips:
+
+- **Light + chips go dim** for idle providers.
+- **Blinking light** while at least one request is in flight; every model currently running is highlighted.
+- Two feeds: `providerActivity[]` (24h per-provider model list, from the `GET /api/usage/stats?period=` fetch)
+  and `activeRequests[]` (in-flight pairs, pushed live over the `/api/usage/stream` SSE, keyed `model (provider)`).
+  One provider can thus have **several models in flight at once** — parallel calls to `glm-5.3` and
+  `deepseek-v4.1-flash` light up two chips.
+- The component runs its own 1s clock tick only while something is active (30s when idle) to drive the blink and
+  the BE-hang guard: a provider that has stayed "active" past `ACTIVE_TIMEOUT_MS` (60s) is treated as stopped, so
+  a killed request can't leave a chip blinking forever.
+
+### 💵 Pricing & Cost Control
+
+Three places, one price table:
+
+1. **Per-model editor** — on a provider page, the tag icon on any model row opens the rate editor
+   (`$/1M` input, cached, reasoning, cache creation) plus **time-of-day rules**.
+2. **Pricing page** (`/dashboard/pricing`, sidebar under *CLI Tools*) — every provider's every model with the
+   rate currently in effect. A model with a schedule gets a separate **peak** row under its normal rate.
+3. **Recalculate costs** (`/dashboard/usage`) — re-prices all stored requests and shifts the daily aggregates
+   by the same delta. Token counts are never touched, days it can't price are skipped and reported, and every
+   figure is shifted by one shared factor so a day total still equals the sum of its breakdowns.
+
+Time-of-day rules:
+
+- Windows are `HH:MM–HH:MM`, bounded to `00:00–23:59` (`24:00` allowed as an end bound); no silent modulo wrap.
+- **UTC by default** — a host in WIB no longer bills DeepSeek peak at the wrong hours. A rule may pin its own
+  IANA `tz`.
+- Optional weekday filter via day checkboxes. All seven checked stores no `days` field (= every day).
+- DeepSeek's published schedule ships as an example: peak `01:00–04:00` + `06:00–10:00` UTC Mon–Fri, off-peak
+  at half price.
+
+Partial overrides merge over a **complete** base (unset rates → `0`), so a half-filled override can never
+produce a `null`/`NaN` cost, and an explicit `0` rate stays `0` instead of falling back to the full input rate.
+
+### 🧩 Skills & Custom Rules
+
+`/dashboard/next-feature` ("XRouter Next" in the sidebar) is the studio for everything injected into a request
+before or after the model runs:
+
+- **Skill registry** — one folder per skill under `skills/` with a `manifest.json` (id, name, hook, optional
+  `config_schema`, install/update/uninstall commands). Toggle, configure, install and uninstall from the UI;
+  `GET/POST/DELETE /api/skills`.
+- **Hooks** — `system-prompt` (inject instructions), `pre-route` (rewrite the body before provider resolution),
+  `post-response` (audit or rewrite the reply), plus `pre-request` and `install-cli`.
+- **Custom Skill / Rule Studio** — author your own rule from a template, with a config schema that renders as
+  sliders/toggles/inputs, plus install/update/uninstall commands.
+- **ECC Auto Skill Router** — inspects each incoming request, matches it against a 286-skill catalog by
+  TF-IDF, and injects the skills that clear the confidence threshold (bounded by "max skills per request").
+- Shipped presets include **UI Design Taste** (anti-slop frontend rules with variance/motion sliders),
+  **Security & Privacy Guard** (strictness slider), and pre-route/post-response hook scaffolds.
+
+### 🩺 Routing Health, Proxy Fitness & Readiness
+
+- **Routing health** (`src/lib/routing/health.js`) tracks per provider: EMA latency (α 0.2, successes only),
+  rolling success rate, consecutive failures and a **`closed`/`open`/`half-open` circuit breaker**. An open
+  circuit is skipped instead of being tried. The dashboard component is `RoutingHealthMonitor` on the Providers
+  page.
+- **Live stream** — `GET /api/health/latency-stream` pushes `{p50, p95, successRate, circuitState}` over SSE
+  whenever the health store changes, so sparklines need no polling (30s keepalive if nothing moves).
+- **Proxy pool fitness** is durable: SQLite table + migration `002`, repo `proxyPoolFitnessRepo`, routes under
+  `/api/proxy-pools/fitness`, dashboard page **Proxy Fitness**. `freebuff` reads the store so an unfit pool is
+  actually skipped — and it fails open.
+- **Probes** — `GET /api/health` is liveness (process up); `GET /api/ready` is readiness (returns 200 only when
+  the DB answers a `SELECT 1`, else 503). Wire the right one into your orchestrator.
+- **Model probing** — `src/lib/routing/modelProbe.js` sends a minimal-token probe, detects search capability,
+  and filters non-LLM entries with a 10s timeout; `modelRanking.js` ranks ranked auto-combo suggestions and
+  `POST /api/combos/suggest` (+ `accept`) applies them.
+
+### 🛡️ Security & Runtime Hardening
+
+| Guard | Behaviour |
+| --- | --- |
+| Bounded request body | `handleChat` checks `Content-Length` **and** counts stream bytes — over the cap (8 MB default, `NINEROUTER_MAX_BODY_BYTES`) it drops the chunk and answers **413** without parsing the body into the heap. Requests with no readable stream fall back to `request.json()`. |
+| 429 classification | `classify429` separates `rate_limit` (60s cooldown) from `quota_exhausted` (≈1h) and `daily_quota` (locked until 00:00 UTC) instead of applying one generic exponential backoff. An existing daily lock is never overwritten by a shorter backoff. |
+| Cooldown-aware retry | When every account is rate-limited with a `retryAfter` inside 30s, the fallback loop waits and retries **once** (max 1 per request, aborts with 499 if the client disconnects) rather than returning 503 immediately. |
+| Password strength policy | `INITIAL_PASSWORD` must be ≥12 chars and not a known placeholder. A weak value in production **no longer issues a session** — login returns 503, the remote-session re-auth path uses the same policy, and `PATCH /api/settings` rejects a weak new password (400). |
+
+Env contract is unchanged: `DATA_DIR`, `INITIAL_PASSWORD`, `JWT_SECRET`, `API_KEY_SECRET`,
+`NINEROUTER_MAX_BODY_BYTES`.
+
+### ⌨️ CLI launcher
+
+The npm package ships the launcher, not just the server: autostart registration, a system tray (Windows via
+PowerShell `NotifyIcon`, macOS/Linux via `systray2` with an arm64 overlay), background mode, and an update
+check that reads the **npm registry** (`xrouter-next`) as the single source of truth — never an upstream
+GitHub repo, whose version line would make a phantom update banner permanent.
+
+`connect` and `show` reach a remote server without starting a local one:
+
+```bash
+npx xrouter-next connect http://<host>:20128 --tools claude,codex   # write tool configs
+npx xrouter-next show claude --json                                 # read them back (key masked)
+```
 
 ### 🌐 Deploy Anywhere
 
@@ -1231,8 +1365,8 @@ Model: cc/claude-opus-4-7
 
 ```bash
 # Clone and install
-git clone https://github.com/decolua/9router.git
-cd 9router
+git clone https://github.com/teddytkz/XRouter-Next.git
+cd XRouter-Next
 npm install
 npm run build
 
@@ -1253,19 +1387,23 @@ npm run start
 
 # Or use PM2
 npm install -g pm2
-pm2 start npm --name 9router -- start
+pm2 start npm --name xrouter-next -- start
 pm2 save
 pm2 startup
 ```
 
 ### Docker
 
-Published images (multi-platform `linux/amd64` + `linux/arm64`):
+Image targets and how they are built:
 
-- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router)
-- GHCR: [`ghcr.io/decolua/9router`](https://github.com/decolua/9router/pkgs/container/9router)
+- GHCR: `ghcr.io/teddytkz/xrouter-next` — published by `.github/workflows/docker-publish.yml`, which only runs
+  on a `v*` tag whose version matches **both** `package.json` and `cli/package.json`, so cut fork release tags
+  (`v0.1.x`), not upstream ones (`v0.5.x`). Until such a tag exists the `ghcr.io` commands below need a local
+  build instead.
+- Docker Hub: [`decolua/9router`](https://hub.docker.com/r/decolua/9router) is upstream's image, not built from
+  this fork (`publish_dockerhub` is gated on the repository being `decolua/9router`).
 
-**Quick start (use published image):**
+**Quick start (published image, or fall back to the local build below if the tag isn't out yet):**
 
 ```bash
 docker run -d \
@@ -1273,7 +1411,7 @@ docker run -d \
   -p 20128:20128 \
   -v "$HOME/.9router:/app/data" \
   -e DATA_DIR=/app/data \
-  decolua/9router:latest
+  ghcr.io/teddytkz/xrouter-next:latest
 ```
 
 → Open http://localhost:20128
@@ -1281,11 +1419,11 @@ docker run -d \
 **Build from source (dev):**
 
 ```bash
-git clone https://github.com/decolua/9router.git
-cd 9router/app
-docker build -t 9router .
+git clone https://github.com/teddytkz/XRouter-Next.git
+cd XRouter-Next
+docker build -t xrouter-next .
 docker run -d --name 9router -p 20128:20128 \
-  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data 9router
+  -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data xrouter-next
 ```
 
 **Container defaults:**
@@ -1299,7 +1437,7 @@ docker run -d --name 9router -p 20128:20128 \
 docker logs -f 9router
 docker restart 9router
 docker stop 9router && docker rm 9router
-docker pull decolua/9router:latest   # update to latest
+docker pull ghcr.io/teddytkz/xrouter-next:latest   # update to latest
 ```
 
 **Data persistence:** `$HOME/.9router/db/data.sqlite` on host ↔ `/app/data/db/data.sqlite` in container.
@@ -1500,9 +1638,30 @@ Authorization: Bearer your-api-key
 
 ## 📧 Support
 
-- **Website**: [9router.com](https://9router.com)
-- **GitHub**: [github.com/decolua/9router](https://github.com/decolua/9router)
-- **Issues**: [github.com/decolua/9router/issues](https://github.com/decolua/9router/issues)
+- **npm**: [npmjs.com/package/xrouter-next](https://www.npmjs.com/package/xrouter-next)
+- **GitHub**: [github.com/teddytkz/XRouter-Next](https://github.com/teddytkz/XRouter-Next)
+- **Issues**: [github.com/teddytkz/XRouter-Next/issues](https://github.com/teddytkz/XRouter-Next/issues)
+- **Upstream**: [github.com/decolua/9router](https://github.com/decolua/9router) (this fork tracks it via `docs/upgrades/`)
+
+## 🔀 XRouter-Next vs upstream
+
+This fork rebrands the dashboard, CLI and npm package (`xrouter-next`), keeps the `~/.9router/` data path and the
+`9router` binary alias for backward compatibility, and syncs upstream releases through a documented ledger
+(`docs/upgrades/`). Fork-local work is tracked in `migration-docs/PRD-XRouter-Next.md` and the
+`## Fork-local (XRouter-Next)` blocks in `CHANGELOG.md`.
+
+Notable additions:
+
+| Area | What |
+| --- | --- |
+| Providers | 29 extra providers (AI21, Alibaba/Qwen device-code OAuth, Baseten, Bytez, Codestral, Databricks, DeepInfra, FriendliAI, Galadriel, GigaChat, Heroku, Hive, LlamaGate, Meta, NanoGPT, Nscale, OVHcloud, Predibase, PublicAI, Snowflake, Upstage, Volcengine, W&B, Zenmux, A6API, AgentRouter, Muse Spark Web) plus the fork-only `freebuff` |
+| Pricing | Per-model editor with time-of-day/day/tz rules, `/dashboard/pricing`, `POST /api/usage/recalculate` |
+| Usage | Provider activity list (live model chips), **This Month** period, `/api/usage/reset` |
+| Skills | Skill registry + custom hooks + ECC auto skill router (`/dashboard/next-feature`) |
+| Routing | EMA latency / circuit breaker (`/api/health/latency-stream`), model probe + ranking, combo suggest |
+| Ops | Proxy pool fitness store + `/dashboard/proxy-fitness`, `/api/ready`, autostart, system tray, setup wizard, npm-registry update check |
+| Security | Bounded request body, `classify429` cooldowns, password strength policy, cooldown-aware retry |
+| Hermes | Plugin lifecycle (start/stop/restart/logs/install/update), memory injection + extraction, Telegram gateway |
 
 ---
 

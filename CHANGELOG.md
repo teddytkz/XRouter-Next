@@ -1,3 +1,28 @@
+# XRouter-Next v0.1.6 (2026-10-12)
+
+Fork version line, bumped independently of upstream `v0.5.x`. Upstream syncs arrive as their own `# vX.Y.Z`
+blocks below; fork-local work is listed here or under a `## Fork-local (XRouter-Next)` heading inside the
+upstream block it was built on. Sync/port details: [`docs/upgrades/`](./docs/upgrades/README.md).
+
+## Features
+- **Providers**: ported 29 providers from the VansRouter fork — `94 → 122` total, a strict superset of upstream. `ai21`, `alibaba`, `baseten`, `bytez`, `codestral`, `databricks`, `deepinfra`, `friendliai`, `galadriel`, `gigachat`, `heroku`, `hive`, `llamagate`, `meta`, `nanogpt`, `nscale`, `ovhcloud`, `predibase`, `publicai`, `snowflake`, `upstage`, `volcengine`, `wandb`, `zenmux`, `a6api` (pure registry) + `qwen` (device-code OAuth), `agentrouter`, `muse-spark-web` (cookie web), plus the fork-only `freebuff`. New executors: `QwenExecutor`, `AgentRouterExecutor`, `MuseSparkWebExecutor`. `muse-spark-web` deliberately does not claim the `muse` alias (the fork's Meta Muse owns it) and standalone `zcode` stays skipped because the fork folds ZCode OAuth into `glm` (`30395ece`)
+- **Token saver skills**: bumped to the VansRouter defaults (`skills/*/manifest.json`, `TokenSaverClient.js`)
+- **Usage**: added the **This Month** period (calendar month-to-date, resets on the 1st) to the selector, chart and stats APIs (`ce628c63`)
+- **Usage**: replaced the topology graph with `ProviderActivityList` — one row per provider with a status light and the models it served in the last 24h as chips; in-flight models blink, `activeRequests[]` keeps several models per provider distinguishable, polling drops to 30s when idle and sweeps stale in-flight keys (`ed6ecbad`)
+
+## Security
+- **Bounded request body**: `handleChat` checks `Content-Length` and counts stream bytes; over the cap (default 8 MB, `NINEROUTER_MAX_BODY_BYTES`) answers **413** without parsing into the heap
+- **429 classification**: `classify429` splits `rate_limit` (60s), `quota_exhausted` (≈1h) and `daily_quota` (locked to 00:00 UTC) instead of one generic backoff; an existing daily lock is never overwritten by a shorter backoff
+- **Cooldown-aware retry**: when every account carries a `retryAfter` under 30s, wait and retry once instead of failing with 503
+- **Password strength policy**: `INITIAL_PASSWORD` must be ≥12 chars and not a known placeholder — a weak production value no longer issues a session (login 503), and `PATCH /api/settings` rejects a weak new password (400)
+
+## Ops
+- Durable proxy-pool fitness store (SQLite migration `002`, `proxyPoolFitnessRepo`, `/api/proxy-pools/fitness*`, **Proxy Fitness** page); `freebuff` skips unfit pools and fails open
+- `GET /api/ready` readiness probe (503 until the DB answers `SELECT 1`); `/api/providers/bulk` and `gcp-projects` routes
+- Routing health (EMA latency, circuit breaker) with an SSE latency stream, model probe/ranking and `POST /api/combos/suggest`
+
+Port batches landed as `30395ece` (providers + token saver) and `897c5e96` (security/ops hardening); regression gate: 0 new failures. Ledger: [`docs/upgrades/v0.1.5-2026-10-11.md`](./docs/upgrades/v0.1.5-2026-10-11.md).
+
 # v0.5.99 (2026-10-08)
 
 ## Features

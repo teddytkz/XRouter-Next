@@ -1,22 +1,19 @@
-# 9Router - FREE AI Router & Token Saver
+# XRouter-Next - AI Router & Token Saver (fork of 9Router)
 
 **Never stop coding. Save 20-40% tokens with RTK + auto-fallback to FREE & cheap AI models.**
 
-**Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 40+ AI Providers & 100+ Models.**
+**Connect All AI Code Tools (Claude Code, Cursor, Antigravity, Copilot, Codex, Gemini, OpenCode, Cline, OpenClaw...) to 122 providers & 1,300+ model entries.**
 
-[![npm](https://img.shields.io/npm/v/9router.svg)](https://www.npmjs.com/package/9router)
-[![Downloads](https://img.shields.io/npm/dm/9router.svg)](https://www.npmjs.com/package/9router)
-[![Docker Pulls](https://img.shields.io/docker/pulls/decolua/9router.svg?logo=docker&label=Docker%20pulls)](https://hub.docker.com/r/decolua/9router)
-[![GHCR](https://img.shields.io/badge/GHCR-decolua%2F9router-blue?logo=github)](https://github.com/decolua/9router/pkgs/container/9router)
-[![License](https://img.shields.io/npm/l/9router.svg)](https://github.com/decolua/9router/blob/main/LICENSE)
+[![npm](https://img.shields.io/npm/v/xrouter-next.svg)](https://www.npmjs.com/package/xrouter-next)
+[![Downloads](https://img.shields.io/npm/dm/xrouter-next.svg)](https://www.npmjs.com/package/xrouter-next)
+[![License](https://img.shields.io/npm/l/xrouter-next.svg)](https://github.com/teddytkz/XRouter-Next/blob/main/LICENSE)
+[![GitHub](https://img.shields.io/badge/GitHub-teddytkz%2FXRouter--Next-blue?logo=github)](https://github.com/teddytkz/XRouter-Next)
 
-<a href="https://trendshift.io/repositories/22628" target="_blank"><img src="https://trendshift.io/api/badge/repositories/22628" alt="decolua%2F9router | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
-
-[🌐 Website](https://9router.com) • [📖 Full Docs](https://github.com/decolua/9router)
+[📖 Full README](https://github.com/teddytkz/XRouter-Next/blob/development/README.md) • [🔀 Fork changes](https://github.com/teddytkz/XRouter-Next/blob/development/CHANGELOG.md)
 
 ---
 
-## 🤔 Why 9Router?
+## 🤔 Why XRouter-Next?
 
 **Stop wasting money, tokens and hitting limits:**
 
@@ -25,13 +22,20 @@
 - ❌ Tool outputs (git diff, grep, ls...) burn tokens fast
 - ❌ Expensive APIs ($20-50/month per provider)
 
-**9Router solves this:**
+**XRouter-Next solves this:**
 
 - ✅ **RTK Token Saver** - Auto-compress tool_result, save 20-40% tokens
 - ✅ **Maximize subscriptions** - Track quota, use every bit before reset
 - ✅ **Auto fallback** - Subscription → Cheap → Free, zero downtime
 - ✅ **Multi-account** - Round-robin between accounts per provider
 - ✅ **Universal** - Works with any OpenAI/Claude-compatible CLI
+- ✅ **122 providers** - 29 more than upstream, each with editable per-model prices
+
+**Beyond upstream 9Router:** per-model price editor with time-of-day/peak rules and a `/dashboard/pricing`
+page, a **Skills & Custom Rules** studio (`/dashboard/next-feature`) for system-prompt / pre-route /
+post-response hooks plus an ECC auto skill router, **routing health** (EMA latency, circuit breaker, SSE
+sparklines), durable **proxy pool fitness** with its own dashboard page, and security hardening (8 MB bounded
+request body → 413, `classify429` cooldowns, password strength policy, cooldown-aware retry).
 
 ---
 
@@ -47,15 +51,21 @@ xrouter-next
 npx xrouter-next
 ```
 
+> Published npm may lag this source (`0.1.1` at time of writing) — check `npm view xrouter-next version`
+> before relying on the fork-local features described below.
+
 **Option 2 — Docker (server/VPS):**
 
 ```bash
 docker run -d --name 9router -p 20128:20128 \
   -v "$HOME/.9router:/app/data" -e DATA_DIR=/app/data \
-  decolua/9router:latest
+  ghcr.io/teddytkz/xrouter-next:latest
 ```
 
-Published images: [Docker Hub](https://hub.docker.com/r/decolua/9router) • [GHCR](https://github.com/decolua/9router/pkgs/container/9router) (multi-platform amd64/arm64).
+That image is built by `.github/workflows/docker-publish.yml`, which only publishes on a `v*` tag matching both
+package versions — so branch builds have no image yet; use `npx xrouter-next` or a local `docker build` until a
+fork release tag is cut. Docker Hub publication is restricted to upstream `decolua/9router`, so this fork ships
+to GHCR only.
 
 🎉 Dashboard opens at `http://localhost:20128`
 
@@ -81,7 +91,9 @@ That's it! Start coding with FREE AI models.
 ```bash
 xrouter-next                    # Start with default settings
 xrouter-next --port 8080        # Custom port
+xrouter-next --host 127.0.0.1   # Bind address (0.0.0.0 exposes to the LAN)
 xrouter-next --no-browser       # Don't open browser
+xrouter-next --tray             # Run in system tray / background mode
 xrouter-next --skip-update      # Skip auto-update check
 xrouter-next --help             # Show all options
 ```
@@ -90,14 +102,15 @@ xrouter-next --help             # Show all options
 
 ---
 
-## 🔌 Connect to a Remote 9Router
+## 🔌 Connect to a Remote XRouter-Next Server
 
-Already running 9Router on another machine (e.g. a team server on your LAN)? Point this machine's CLI tools at it — no local server is started:
+Already running the server on another machine (e.g. a team box on your LAN)? Point this machine's CLI tools at
+it — no local server is started:
 
 ```bash
-npx 9router connect http://<server-host>:20128                       # pick tools interactively
-npx 9router connect http://<server-host>:20128 --tools claude,codex  # or choose up front
-npx 9router connect --reset --tools claude,codex                     # undo
+npx xrouter-next connect http://<server-host>:20128                       # pick tools interactively
+npx xrouter-next connect http://<server-host>:20128 --tools claude,codex  # or choose up front
+npx xrouter-next connect --reset --tools claude,codex                     # undo
 ```
 
 It logs in with the dashboard password (hidden prompt), reuses or creates an API key named `cli-<hostname>`, and writes each tool's config (backing up the original once as `*.bak-9router`).
@@ -119,37 +132,36 @@ Models come from the **server's own CLI-tools configuration**, so a client gets 
 
 ```bash
 # One Claude tier; the other tiers still come from the server
-npx 9router connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
+npx xrouter-next connect http://<server-host>:20128 --tools claude --sonnet cc/claude-sonnet-5-5
 
 # Every Claude tier
-npx 9router connect http://<server-host>:20128 --tools claude \
+npx xrouter-next connect http://<server-host>:20128 --tools claude \
   --fable cc/claude-fable-5-1 --opus cc/claude-opus-5-5 \
   --sonnet cc/claude-sonnet-5-5 --haiku cc/claude-haiku-4-5-20251001
 
 # All non-Claude tools at once
-npx 9router connect http://<server-host>:20128 --tools codex,opencode,kilo --model ocg/deepseek-flash
+npx xrouter-next connect http://<server-host>:20128 --tools codex,opencode,kilo --model ocg/deepseek-flash
 
 # Claude and other tools in one run
-npx 9router connect http://<server-host>:20128 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
+npx xrouter-next connect http://<server-host>:20128 --tools claude,codex --opus cc/claude-opus-5-5 --model gpt-6
 
 # A different model per tool: --model covers every non-Claude tool in a run, so run once per tool
-npx 9router connect http://<server-host>:20128 --tools codex --model gpt-6
-npx 9router connect http://<server-host>:20128 --tools opencode --model ocg/glm-5.3
+npx xrouter-next connect http://<server-host>:20128 --tools codex --model gpt-6
+npx xrouter-next connect http://<server-host>:20128 --tools opencode --model ocg/glm-5.3
 ```
 
 A model the server doesn't list is still written, with a `not listed by server` warning. To see the ids it serves: `curl http://<server-host>:20128/v1/models -H "Authorization: Bearer <your key>"`.
 
 ### Checking the current config
 
-`9router show` prints what each CLI tool on this machine is currently set to — base URL, masked API key and models. It only reads local files and never contacts a server.
+`xrouter-next show` prints what each CLI tool on this machine is currently set to — base URL, masked API key and models. It only reads local files and never contacts a server.
 
 ```bash
-npx 9router show                 # every supported tool
-npx 9router show claude          # one tool
-npx 9router show claude codex    # several
-npx 9router show claude --json   # machine-readable (key still masked)
+npx xrouter-next show                 # every supported tool
+npx xrouter-next show claude          # one tool
+npx xrouter-next show claude codex    # several
+npx xrouter-next show claude --json   # machine-readable (key still masked)
 ```
-
 ```
 ✅ Claude Code
    File:     ~/.claude/settings.json
@@ -161,7 +173,7 @@ npx 9router show claude --json   # machine-readable (key still masked)
      sonnet  cc/claude-sonnet-5-5
 ```
 
-Tools not pointed at 9router are listed as `not configured`. For Codex, OpenCode and Cline it also warns when a 9router entry exists but another provider is the active one.
+Tools not pointed at this server are listed as `not configured`. For Codex, OpenCode and Cline it also warns when a 9router entry exists but another provider is the active one.
 
 ### Other options
 
@@ -174,7 +186,7 @@ Tools not pointed at 9router are listed as `not configured`. For Codex, OpenCode
 | `--print-env` | Also print `OPENAI_BASE_URL` / `OPENAI_API_KEY` for other CLIs |
 | `--reset` | Remove the 9router settings from the selected tools |
 
-See `9router connect --help` for the full list.
+See `xrouter-next connect --help` for the full list.
 
 > ⚠️ Over plain `http://` the password and API key are sent unencrypted — use a trusted LAN/VPN or put HTTPS in front. The API key is stored in each tool's config file.
 
@@ -198,11 +210,11 @@ Any tool supporting OpenAI/Claude-compatible API works.
 
 ## 📚 Documentation
 
-Full docs, advanced setup, video tutorials & development guide:
+Full docs, advanced setup, and the fork's upgrade ledger:
 
-- **GitHub**: https://github.com/decolua/9router
-- **Full README**: https://github.com/decolua/9router/blob/master/README.md
-- **Website**: https://9router.com
+- **Full README**: https://github.com/teddytkz/XRouter-Next/blob/development/README.md
+- **Changelog / fork changes**: https://github.com/teddytkz/XRouter-Next/blob/development/CHANGELOG.md
+- **Upstream project**: https://github.com/decolua/9router
 
 ---
 
