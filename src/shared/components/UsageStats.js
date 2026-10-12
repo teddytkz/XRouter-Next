@@ -15,8 +15,8 @@ import Card from "./Card";
 import OverviewCards from "@/app/(dashboard)/dashboard/usage/components/OverviewCards";
 import UsageTable, { fmt, fmtTime } from "@/app/(dashboard)/dashboard/usage/components/UsageTable";
 import dynamic from "next/dynamic";
-// Lazy-load: keeps @xyflow/react and recharts out of the initial bundle
-const ProviderTopology = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderTopology"), { ssr: false });
+// Lazy-load: keeps recharts out of the initial bundle
+const ProviderActivityList = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderActivityList"), { ssr: false });
 const UsageChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/UsageChart"), { ssr: false });
 const ProviderBarChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/ProviderBarChart"), { ssr: false });
 const TopModelsChart = dynamic(() => import("@/app/(dashboard)/dashboard/usage/components/TopModelsChart"), { ssr: false });
@@ -544,16 +544,15 @@ export default function UsageStats({ period: periodProp, setPeriod: setPeriodPro
       {/* Overview cards */}
       {loading ? spinner : <OverviewCards stats={stats} />}
 
-      {/* Provider topology + live pills / Recent Requests */}
+      {/* Provider activity list + live pills / Recent Requests */}
       {loading ? spinner : (
-        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          <ProviderTopology
+        <div className="grid min-w-0 grid-cols-1 items-stretch gap-2 lg:h-[480px] lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
+          <ProviderActivityList
             providers={providers}
             activeRequests={stats.activeRequests || []}
-            lastProvider={stats.recentRequests?.[0]?.provider || ""}
-            errorProvider={stats.errorProvider || ""}
+            providerActivity={stats.providerActivity || []}
           />
-          <div className="flex min-w-0 flex-col gap-2 lg:h-[480px]">
+          <div className="flex min-h-0 min-w-0 flex-col gap-2 lg:h-full">
             <LivePills live={stats?.live5m} compact />
             <RecentRequests requests={stats.recentRequests || []} fill />
           </div>

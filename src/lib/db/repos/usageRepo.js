@@ -815,6 +815,34 @@ export async function getUsageStats(period = "all") {
     };
   } catch {}
 
+  // Per-provider activity over the last 24h, independent of the selected period.
+  // Feeds the live provider list: each row lists only models used in the window;
+  // a provider with no rows is idle (the client renders the "Idle" label).
+  let providerActivity = [];
+  try {
+    const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    // ISO-8601 timestamps sort lexicographically, so MAX() yields the newest.
+    const actRows = db.all(
+      `SELECT provider, model, MAX(timestamp) AS lastUsed, COUNT(*) AS requests
+       FROM usageHistory WHERE timestamp >= ?
+       GROUP BY provider, model ORDER BY lastUsed DESC`,
+      [cutoff24h]
+    );
+    const byProvider = new Map();
+    for (const r of actRows) {
+      const prov = (r.provider || "").toLowerCase();
+      if (!prov) continue;
+      let entry = byProvider.get(prov);
+      if (!entry) {
+        entry = { provider: prov, lastUsed: r.lastUsed, models: [] };
+        byProvider.set(prov, entry);
+      }
+      entry.models.push({ model: r.model || "", lastUsed: r.lastUsed, requests: r.requests });
+      if (r.lastUsed > entry.lastUsed) entry.lastUsed = r.lastUsed;
+    }
+    providerActivity = [...byProvider.values()];
+  } catch {}
+
   const stats = {
     totalRequests: 0,
     totalPromptTokens: 0, totalCompletionTokens: 0, totalCachedTokens: 0, totalCost: 0,
@@ -824,6 +852,7 @@ export async function getUsageStats(period = "all") {
     activeRequests: [],
     recentRequests,
     live5m,
+    providerActivity,
     errorProvider: (Date.now() - lastErrorProvider.ts < 10000) ? lastErrorProvider.provider : "",
   };
 
