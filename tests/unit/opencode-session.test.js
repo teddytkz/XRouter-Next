@@ -170,25 +170,25 @@ describe("OpenCode Free Executor Session Resolution", () => {
 });
 
 describe("OpenCode Free User-Agent Validation", () => {
-  it("defaults User-Agent to opencode/1.18.31 for non-opencode downstream clients", () => {
+  it("defaults User-Agent to opencode/1.19.0 for non-opencode downstream clients", () => {
     const executor = getExecutor("opencode");
     const headersNoUa = executor.buildHeaders({});
-    expect(headersNoUa["User-Agent"]).toBe("opencode/1.18.31");
+    expect(headersNoUa["User-Agent"]).toBe("opencode/1.19.0");
 
     const headersClaude = executor.buildHeaders({ rawHeaders: { "user-agent": "Claude-Code/1.0" } });
-    expect(headersClaude["User-Agent"]).toBe("opencode/1.18.31");
+    expect(headersClaude["User-Agent"]).toBe("opencode/1.19.0");
   });
 
-  it("replaces bare opencode with versioned opencode/1.18.31 to prevent 403 FreeTierError", () => {
+  it("replaces bare opencode with versioned opencode/1.19.0 to prevent 403 FreeTierError", () => {
     const executor = getExecutor("opencode");
     const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode" } });
-    expect(headers["User-Agent"]).toBe("opencode/1.18.31");
+    expect(headers["User-Agent"]).toBe("opencode/1.19.0");
   });
 
   it("upgrades outdated opencode versions (< 1.17) to prevent 426 Upgrade Required", () => {
     const executor = getExecutor("opencode");
     const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode/1.15.0" } });
-    expect(headers["User-Agent"]).toBe("opencode/1.18.31");
+    expect(headers["User-Agent"]).toBe("opencode/1.19.0");
   });
 
   it("preserves valid opencode versions (>= 1.17)", () => {
@@ -257,6 +257,34 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(
       deriveRequestId(session, { messages: [{ role: "user", content: "a different question" }] }),
     ).not.toBe(first);
+  });
+
+  it("encodes a genuine recent timestamp in x-opencode-request (403 FreeTierError gate)", () => {
+    // Upstream decodes the first 6 hex bytes of msg_<12hex>… as ms-since-epoch
+    // and rejects non-monotonic/digest bytes with 403 FreeTierError. The cached
+    // id must therefore carry a timestamp within seconds of "now".
+    const session = stableSessionId({ connectionId: "req-ts-conn" });
+    const id = deriveRequestId(session, { messages: [{ role: "user", content: "timestamp probe" }] });
+    // The 48-bit field is (ms << 12) mod 2^48; recover ms and lift the 2^36 wrap.
+    const low = Number(BigInt("0x" + id.slice(4, 16)) >> 12n);
+    const now = Date.now();
+    const ts = low + Math.round((now - low) / 2 ** 36) * 2 ** 36;
+    expect(Math.abs(now - ts)).toBeLessThan(60_000);
+  });
+
+  it("clamps max_output_tokens to the model ceiling, preserving Muse Spark's 131072", () => {
+    const executor = getExecutor("opencode");
+    const big = executor.transformRequest("muse-spark-1.3-contributor-free", {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      max_tokens: 131072,
+    }, true, {});
+    expect(big.max_output_tokens).toBe(131072);
+
+    const tiny = executor.transformRequest("muse-spark-1.3-contributor-free", {
+      input: [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }],
+      max_tokens: 1,
+    }, true, {});
+    expect(tiny.max_output_tokens).toBe(16);
   });
 
   it("preserves a valid downstream x-opencode-request header", () => {

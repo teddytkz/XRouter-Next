@@ -10,6 +10,9 @@ upstream block it was built on. Sync/port details: [`docs/upgrades/`](./docs/upg
 - **Usage**: added the **This Month** period (calendar month-to-date, resets on the 1st) to the selector, chart and stats APIs (`ce628c63`)
 - **Usage**: replaced the topology graph with `ProviderActivityList` — one row per provider with a status light and the models it served in the last 24h as chips; in-flight models blink, `activeRequests[]` keeps several models per provider distinguishable, polling drops to 30s when idle and sweeps stale in-flight keys (`ed6ecbad`)
 
+## Fixes
+- **OpenCode Free**: resolve `403 FreeTierError` on `opencode` 1.19.0+ — the free-tier gate decodes the first 6 hex bytes of `x-opencode-session` (`ses_…`) and `x-opencode-request` (`msg_…`) as a genuine ms timestamp; the fork emitted the raw SHA-256 digest prefix (non-monotonic), so upstream rejected it as not-from-CLI. `translateSessionId`/`deriveRequestId` now encode `~(ts*0x1000+counter)` / `ts*0x1000+1` and cache the minted id so retries stay idempotent; spoofed UA bumped to `opencode/1.19.0`. Also harden `/zen/v1/responses`: sanitize tool names to `^[a-zA-Z0-9_-]+$` (MCP `:`/`.` 400s), pair orphan `function_call`/`function_call_output` items, and clamp `max_output_tokens` to `[16, model maxOutput]` (live-probed; keeps Muse Spark's 131072). Claude Code tool-input aliases (`cmd`→`command`, `path`→`file_path`, `query`→`pattern`) are normalized on both streaming and non-streaming paths (ported from upstream PR #4786)
+
 ## Security
 - **Bounded request body**: `handleChat` checks `Content-Length` and counts stream bytes; over the cap (default 8 MB, `NINEROUTER_MAX_BODY_BYTES`) answers **413** without parsing into the heap
 - **429 classification**: `classify429` splits `rate_limit` (60s), `quota_exhausted` (≈1h) and `daily_quota` (locked to 00:00 UTC) instead of one generic backoff; an existing daily lock is never overwritten by a shorter backoff
