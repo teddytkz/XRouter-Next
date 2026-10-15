@@ -15,15 +15,16 @@ const CREDS = { connectionId: "opencode-free-tool-choice-test" };
 const INPUT = [{ type: "message", role: "user", content: [{ type: "input_text", text: "hi" }] }];
 const TOOLS = [{ type: "function", name: "get_weather", description: "w", parameters: { type: "object", properties: {} } }];
 
-// The free tier also requires the fingerprint quartet (bash/glob/grep/read), which
-// the executor appends after the client's own tools (see opencodeFingerprint.js).
-const STUB = (name) => ({
-  type: "function",
-  name,
-  description: "This tool is currently unavailable and must not be used.",
-  parameters: { type: "object", properties: {} },
-});
-const TOOLS_WITH_STUBS = [...TOOLS, ...[["bash"], ["glob"], ["grep"], ["read"]].map(([n]) => STUB(n))];
+// The free tier also requires the fingerprint pair (read/shell) with non-empty
+// schemas, appended after the client's own tools (see opencodeFingerprint.js).
+// Assert structurally rather than duplicating the verbatim schema text.
+const expectFingerprintPair = (tools) => {
+  expect(tools.map((t) => t.name)).toEqual(["get_weather", "read", "shell"]);
+  for (const name of ["read", "shell"]) {
+    const t = tools.find((x) => x.name === name);
+    expect(Object.keys(t.parameters.properties).length).toBeGreaterThan(0);
+  }
+};
 
 function responsesBody(model, toolChoice) {
   const body = { model, input: structuredClone(INPUT), tools: structuredClone(TOOLS) };
@@ -47,7 +48,7 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       const body = responsesBody(model, structuredClone(choice));
       const out = new OpenCodeExecutor().transformRequest(model, body, true, CREDS);
       expect(out.tool_choice).toBe("auto");
-      expect(out.tools).toEqual(TOOLS_WITH_STUBS);
+      expectFingerprintPair(out.tools);
       expect(out.input).toEqual(INPUT);
     }
   });
@@ -57,14 +58,14 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
       FREE_13, responsesBody(FREE_13, "auto"), true, CREDS,
     );
     expect(autoOut.tool_choice).toBe("auto");
-    expect(autoOut.tools).toEqual(TOOLS_WITH_STUBS);
+    expectFingerprintPair(autoOut.tools);
     expect(autoOut.input).toEqual(INPUT);
 
     const absentOut = new OpenCodeExecutor().transformRequest(
       FREE_13, responsesBody(FREE_13, undefined), true, CREDS,
     );
     expect(absentOut.tool_choice).toBe("auto");
-    expect(absentOut.tools).toEqual(TOOLS_WITH_STUBS);
+    expectFingerprintPair(absentOut.tools);
     expect(absentOut.input).toEqual(INPUT);
   });
 
@@ -80,22 +81,22 @@ describe("opencode Free 1.3 tool_choice auto-only", () => {
     expect(out.tool_choice).toEqual(choice);
   });
 
-  it("wire: execute sends choice auto to /zen/v1/responses", async () => {
+  it("wire: execute sends choice auto to /inference/v1/responses", async () => {
     proxyAwareFetch.mockClear();
     const ex = new OpenCodeExecutor();
     const body = responsesBody(FREE_13, { type: "function", name: "get_weather" });
     const { url, transformedBody } = await ex.execute({
       model: FREE_13, body, stream: true, credentials: CREDS,
     });
-    expect(url).toBe("https://opencode.ai/zen/v1/responses");
+    expect(url).toBe("https://opencode.ai/inference/v1/responses");
     expect(transformedBody.tool_choice).toBe("auto");
     expect(proxyAwareFetch).toHaveBeenCalledTimes(1);
     const [actualUrl, actualInit] = proxyAwareFetch.mock.calls[0];
-    expect(actualUrl).toBe("https://opencode.ai/zen/v1/responses");
+    expect(actualUrl).toBe("https://opencode.ai/inference/v1/responses");
     const sent = JSON.parse(actualInit.body);
     expect(sent.tool_choice).toBe("auto");
     expect(sent.model).toBe(FREE_13);
-    expect(sent.tools).toEqual(TOOLS_WITH_STUBS);
+    expectFingerprintPair(sent.tools);
     expect(sent.input).toEqual(INPUT);
   });
 });

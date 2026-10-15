@@ -11,12 +11,9 @@ vi.mock("../../open-sse/utils/proxyFetch.js", () => ({
 import { getExecutor } from "../../open-sse/executors/index.js";
 import {
   OPENCODE_SESSION_RE,
-  OPENCODE_REQUEST_RE,
   generateSessionId,
-  generateRequestId,
   translateSessionId,
   stableSessionId,
-  deriveRequestId,
 } from "../../open-sse/executors/opencode.js";
 function makeCredentials(overrides = {}) {
   return {
@@ -50,14 +47,6 @@ describe("OpenCode Free Session ID Format", () => {
     for (let i = 0; i < 20; i++) {
       const id = generateSessionId();
       expect(id).toMatch(OPENCODE_SESSION_RE);
-      expect(id).toHaveLength(30);
-    }
-  });
-
-  it("generates request IDs matching OpenCode canonical format (msg_ + 12 hex + 14 base62)", () => {
-    for (let i = 0; i < 20; i++) {
-      const id = generateRequestId();
-      expect(id).toMatch(/^msg_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
       expect(id).toHaveLength(30);
     }
   });
@@ -170,36 +159,28 @@ describe("OpenCode Free Executor Session Resolution", () => {
 });
 
 describe("OpenCode Free User-Agent Validation", () => {
-  it("defaults User-Agent to opencode/1.19.0 for non-opencode downstream clients", () => {
+  const UA = "opencode/latest/2.0.29/cli";
+
+  it("defaults User-Agent to the v2 CLI string for non-opencode downstream clients", () => {
     const executor = getExecutor("opencode");
     const headersNoUa = executor.buildHeaders({});
-    expect(headersNoUa["User-Agent"]).toBe("opencode/1.19.0");
+    expect(headersNoUa["User-Agent"]).toBe(UA);
 
     const headersClaude = executor.buildHeaders({ rawHeaders: { "user-agent": "Claude-Code/1.0" } });
-    expect(headersClaude["User-Agent"]).toBe("opencode/1.19.0");
+    expect(headersClaude["User-Agent"]).toBe(UA);
   });
 
-  it("replaces bare opencode with versioned opencode/1.19.0 to prevent 403 FreeTierError", () => {
+  it("replaces a bare or v1 opencode UA with the v2 string (v1 answers 403 FreeTierError)", () => {
     const executor = getExecutor("opencode");
-    const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode" } });
-    expect(headers["User-Agent"]).toBe("opencode/1.19.0");
+    for (const ua of ["opencode", "opencode/1.19.0", "opencode/1.18.31 ai-sdk/provider-utils/4.0.40"]) {
+      expect(executor.buildHeaders({ rawHeaders: { "user-agent": ua } })["User-Agent"]).toBe(UA);
+    }
   });
 
-  it("upgrades outdated opencode versions (< 1.17) to prevent 426 Upgrade Required", () => {
+  it("preserves a downstream v2 opencode UA", () => {
     const executor = getExecutor("opencode");
-    const headers = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode/1.15.0" } });
-    expect(headers["User-Agent"]).toBe("opencode/1.19.0");
-  });
-
-  it("preserves valid opencode versions (>= 1.17)", () => {
-    const executor = getExecutor("opencode");
-    const headers118 = executor.buildHeaders({
-      rawHeaders: { "user-agent": "opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14" },
-    });
-    expect(headers118["User-Agent"]).toBe("opencode/1.18.31 ai-sdk/provider-utils/4.0.40 runtime/bun/1.3.14");
-
-    const headersFuture = executor.buildHeaders({ rawHeaders: { "user-agent": "opencode/1.19.0" } });
-    expect(headersFuture["User-Agent"]).toBe("opencode/1.19.0");
+    const v2 = "opencode/latest/2.0.26/cli";
+    expect(executor.buildHeaders({ rawHeaders: { "user-agent": v2 } })["User-Agent"]).toBe(v2);
   });
 });
 
@@ -248,30 +229,6 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(first).toMatch(OPENCODE_SESSION_RE);
   });
 
-  it("derives deterministic, canonical request ids per message", () => {
-    const session = stableSessionId({ connectionId: "req-conn" });
-    const body = { messages: [{ role: "user", content: "ping" }] };
-    const first = deriveRequestId(session, body);
-    expect(first).toMatch(OPENCODE_REQUEST_RE);
-    expect(deriveRequestId(session, body)).toBe(first);
-    expect(
-      deriveRequestId(session, { messages: [{ role: "user", content: "a different question" }] }),
-    ).not.toBe(first);
-  });
-
-  it("encodes a genuine recent timestamp in x-opencode-request (403 FreeTierError gate)", () => {
-    // Upstream decodes the first 6 hex bytes of msg_<12hex>… as ms-since-epoch
-    // and rejects non-monotonic/digest bytes with 403 FreeTierError. The cached
-    // id must therefore carry a timestamp within seconds of "now".
-    const session = stableSessionId({ connectionId: "req-ts-conn" });
-    const id = deriveRequestId(session, { messages: [{ role: "user", content: "timestamp probe" }] });
-    // The 48-bit field is (ms << 12) mod 2^48; recover ms and lift the 2^36 wrap.
-    const low = Number(BigInt("0x" + id.slice(4, 16)) >> 12n);
-    const now = Date.now();
-    const ts = low + Math.round((now - low) / 2 ** 36) * 2 ** 36;
-    expect(Math.abs(now - ts)).toBeLessThan(60_000);
-  });
-
   it("clamps max_output_tokens to the model ceiling, preserving Muse Spark's 131072", () => {
     const executor = getExecutor("opencode");
     const big = executor.transformRequest("muse-spark-1.3-contributor-free", {
@@ -287,13 +244,19 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(tiny.max_output_tokens).toBe(16);
   });
 
-  it("preserves a valid downstream x-opencode-request header", () => {
+  it("never sends x-opencode-request (the v1 header is a 403 trigger)", () => {
     const executor = getExecutor("opencode");
-    const validReq = "msg_0ae8d9cd3001swxaFbM248jcIF";
-    const { prepared } = prepare(executor, {
-      credentials: makeCredentials({ rawHeaders: { "x-opencode-request": validReq } }),
-    });
-    expect(prepared._opencodeRequest).toBe(validReq);
+    const headers = executor.buildHeaders({ rawHeaders: { "x-opencode-request": "msg_0ae8d9cd3001swxaFbM248jcIF" } });
+    expect(headers).not.toHaveProperty("x-opencode-request");
+  });
+
+  it("sends the v2 session-id aliases next to x-opencode-session", () => {
+    const executor = getExecutor("opencode");
+    const headers = executor.buildHeaders({});
+    expect(headers["x-opencode-session"]).toMatch(OPENCODE_SESSION_RE);
+    expect(headers["x-opencode-session-id"]).toBe(headers["x-opencode-session"]);
+    expect(headers["x-session-affinity"]).toBe(headers["x-opencode-session"]);
+    expect(headers["x-session-id"]).toBe(headers["x-opencode-session"]);
   });
 
   it("keeps the standalone buildHeaders session stable across calls", () => {
@@ -304,17 +267,18 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(second).toBe(first);
   });
 
-  it("applies the full lowercase free-tier fingerprint quartet", () => {
+  it("applies the full lowercase free-tier fingerprint pair", () => {
   const executor = getExecutor("opencode");
 
   const chatNoTools = executor.transformRequest("nemotron-3-ultra-free", {
     messages: [{ role: "user", content: "hi" }],
   });
   expect(chatNoTools.stream).toBe(true);
-  expect(chatNoTools.tool_choice).toBe("none");
-  expect(chatNoTools.tools.map((t) => t.function?.name)).toEqual([
-    "bash", "glob", "grep", "read",
-  ]);
+  expect(chatNoTools.tools.map((t) => t.function?.name)).toEqual(["read", "shell"]);
+  // Every reserved name needs a non-empty properties map; an empty one 403s.
+  for (const t of chatNoTools.tools) {
+    expect(Object.keys(t.function.parameters.properties).length).toBeGreaterThan(0);
+  }
 
   const chatWithTools = executor.transformRequest("nemotron-3-ultra-free", {
     messages: [{ role: "user", content: "hi" }],
@@ -327,20 +291,20 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     tool_choice: "auto",
   });
   expect(chatWithTools.tool_choice).toBe("auto");
+  // Capitalized variants are not reserved, so they pass through and the pair is
+  // appended rather than rewritten.
   expect(chatWithTools.tools.map((t) => t.function?.name)).toEqual([
-    "bash", "glob", "grep", "read",
+    "Bash", "Glob", "Grep", "Read", "read", "shell",
   ]);
 
   const chatPartial = executor.transformRequest("nemotron-3-ultra-free", {
     messages: [{ role: "user", content: "hi" }],
     tools: [
-      { type: "function", function: { name: "bash", description: "existing" } },
       { type: "function", function: { name: "read", description: "existing" } },
+      { type: "function", function: { name: "shell", description: "existing" } },
     ],
   });
-  expect(chatPartial.tools.map((t) => t.function?.name)).toEqual([
-    "bash", "read", "glob", "grep",
-  ]);
+  expect(chatPartial.tools.map((t) => t.function?.name)).toEqual(["read", "shell"]);
   expect(chatPartial.tools[0].function.description).toBe("existing");
 });
 
@@ -362,10 +326,10 @@ describe("OpenCode Stable Session Reuse (429 follow-up)", () => {
     expect(transformed.reasoning?.effort).toBe("xhigh");
     const names = transformed.tools.map((tool) => tool.name);
     expect(names).toContain("zcode_search");
-    expect(names).toContain("bash");
     expect(names).toContain("read");
-    expect(names.filter((name) => name === "bash")).toHaveLength(1);
+    expect(names).toContain("shell");
     expect(names.filter((name) => name === "read")).toHaveLength(1);
+    expect(names.filter((name) => name === "shell")).toHaveLength(1);
   });
 
   it("declares forceStream on the opencode transport so chatCore serves SSE upstream", async () => {

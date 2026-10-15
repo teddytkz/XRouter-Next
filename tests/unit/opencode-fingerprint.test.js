@@ -1,70 +1,42 @@
 import { describe, it, expect } from "vitest";
 import {
   applyFingerprintTools,
-  concealFingerprintToolNames,
+  ensureReservedToolSchemas,
   appendMissingFingerprintTools,
   fingerprintToolKey,
   restoreToolNames,
   takeRenamedToolNames,
   OPENCODE_FINGERPRINT_TOOLS,
+  OPENCODE_RESERVED_TOOLS,
 } from "open-sse/utils/opencodeFingerprint.js";
 
-const CC_TOOLS = ["Task", "Bash", "Glob", "Grep", "Read", "Edit", "Write", "WebFetch"];
 const flat = (names) => names.map((name) => ({ type: "function", name }));
 const chat = (names) => names.map((name) => ({ type: "function", function: { name } }));
+const propsOf = (tool) => (tool.function ?? tool).parameters?.properties ?? {};
+const names = (tools) => tools.map((tool) => (tool.function?.name ?? tool.name));
 
 describe("opencodeFingerprint — request side", () => {
-  it("renames capitalised quartet members to lowercase", () => {
-    const body = { tools: flat(CC_TOOLS) };
-    const map = applyFingerprintTools(body, true);
-    const names = body.tools.map((tool) => tool.name);
-
-    expect(names).toContain("bash");
-    expect(names).not.toContain("Bash");
-    expect(names).toContain("Edit");
-    expect(map.get("bash")).toBe("Bash");
-  });
-
-  it("removes quartet case duplicates without dropping unrelated case variants", () => {
-    const body = { tools: flat(["Bash", "bash", "Glob", "grep", "Read", "Foo", "foo"]) };
-    applyFingerprintTools(body, true);
-
-    const names = body.tools.map((tool) => tool.name);
-    expect(names.filter((name) => name === "bash")).toHaveLength(1);
-    expect(names).toContain("Foo");
-    expect(names).toContain("foo");
-  });
-
-  it("preserves tool count when a complete quartet is only renamed", () => {
-    const body = { tools: flat(CC_TOOLS) };
-    applyFingerprintTools(body, true);
-    expect(body.tools).toHaveLength(CC_TOOLS.length);
-  });
-
-  it("handles the nested chat shape without dropping .function", () => {
-    const body = { tools: chat(CC_TOOLS) };
-    applyFingerprintTools(body, false);
-
-    const names = body.tools.map((tool) => tool.function.name);
-    expect(names).toContain("bash");
-    expect(names).not.toContain("Bash");
-    expect(body.tools[1].function.name).toBe("bash");
-  });
-
-  it("injects all four fingerprint tools when the body carries no tools", () => {
+  it("appends the fingerprint pair when the body carries no tools", () => {
     const body = { tools: [] };
     applyFingerprintTools(body, true);
 
-    expect(body.tools.map((tool) => tool.name).sort()).toEqual([...OPENCODE_FINGERPRINT_TOOLS].sort());
+    expect(names(body.tools)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
     expect(body.tool_choice).toBe("auto");
   });
 
-  it("preserves the chat no-tool default tool_choice=none", () => {
+  it("gives the appended pair a non-empty properties map", () => {
+    const body = {};
+    applyFingerprintTools(body, true);
+
+    for (const tool of body.tools) {
+      expect(Object.keys(propsOf(tool)).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("never defaults a chat tool_choice to none (the gate reads it as not-from-CLI)", () => {
     const body = {};
     applyFingerprintTools(body, false);
-
-    expect(body.tools.map((tool) => tool.function.name)).toEqual(OPENCODE_FINGERPRINT_TOOLS);
-    expect(body.tool_choice).toBe("none");
+    expect(body.tool_choice).toBeUndefined();
   });
 
   it("does not invent a chat tool_choice when the caller already supplied tools", () => {
@@ -73,43 +45,76 @@ describe("opencodeFingerprint — request side", () => {
     expect(body.tool_choice).toBeUndefined();
   });
 
-  it("appends only genuinely missing quartet members", () => {
-    const body = { tools: flat(["Bash", "Read", "terminal"]) };
+  it("appends only the missing fingerprint member", () => {
+    const body = { tools: flat(["read", "terminal"]) };
+    applyFingerprintTools(body, true);
+    expect(names(body.tools)).toEqual(["read", "terminal", "shell"]);
+  });
+
+  it("preserves the caller's capitalized tools verbatim", () => {
+    const body = { tools: flat(["Bash", "Read", "Glob", "Grep", "Edit"]) };
     applyFingerprintTools(body, true);
 
-    const names = body.tools.map((tool) => tool.name);
-    expect(names).toContain("glob");
-    expect(names).toContain("grep");
-    expect(names).toContain("terminal");
-    expect(body.tools).toHaveLength(5);
+    // `Read` is not the reserved lowercase `read`, so the pair is appended and
+    // the caller's casing is untouched (upstream accepts it alongside `read`).
+    expect(names(body.tools)).toEqual(["Bash", "Read", "Glob", "Grep", "Edit", "read", "shell"]);
   });
 
-  it("retargets flat tool_choice that points at a renamed tool", () => {
-    const body = { tools: flat(CC_TOOLS), tool_choice: { type: "function", name: "Bash" } };
-    applyFingerprintTools(body, true);
-    expect(body.tool_choice.name).toBe("bash");
-  });
-
-  it("retargets nested tool_choice that points at a renamed tool", () => {
-    const body = {
-      tools: chat(CC_TOOLS),
-      tool_choice: { type: "function", function: { name: "Read" } },
-    };
-    applyFingerprintTools(body, false);
-    expect(body.tool_choice.function.name).toBe("read");
-  });
-
-  it("records the rename map against the body for the response side", () => {
-    const body = { tools: flat(CC_TOOLS) };
+  it("records an empty rename map (no renames happen any more)", () => {
+    const body = { tools: flat(["Bash"]) };
     const map = applyFingerprintTools(body, true);
-    expect(takeRenamedToolNames(body)).toBe(map);
+    expect(map.size).toBe(0);
+    expect(takeRenamedToolNames(body)).toBeNull();
   });
 
   it("never throws on malformed tools", () => {
     for (const tools of [null, undefined, "nope", [null, 42, []], [{}, { name: "" }]]) {
-      expect(() => concealFingerprintToolNames(tools)).not.toThrow();
+      expect(() => ensureReservedToolSchemas(tools)).not.toThrow();
       expect(() => appendMissingFingerprintTools(tools, true)).not.toThrow();
+      expect(() => applyFingerprintTools({ tools }, true)).not.toThrow();
     }
+  });
+});
+
+describe("ensureReservedToolSchemas", () => {
+  it("fills an empty properties map on a reserved lowercase name", () => {
+    const out = ensureReservedToolSchemas(flat(["read"]));
+    expect(Object.keys(propsOf(out[0])).length).toBeGreaterThan(0);
+  });
+
+  it("fills every reserved name in the set", () => {
+    const out = ensureReservedToolSchemas(flat(OPENCODE_RESERVED_TOOLS));
+    for (const tool of out) {
+      expect(Object.keys(propsOf(tool)).length).toBeGreaterThan(0);
+    }
+  });
+
+  it("leaves a non-reserved name with an empty schema alone", () => {
+    const out = ensureReservedToolSchemas(flat(["get_weather"]));
+    expect(propsOf(out[0])).toEqual({});
+  });
+
+  it("leaves a reserved name with a real schema untouched", () => {
+    const tool = { type: "function", name: "read", parameters: { type: "object", properties: { path: { type: "string" } } } };
+    const out = ensureReservedToolSchemas([tool]);
+    expect(out[0]).toBe(tool);
+  });
+
+  it("does not treat capitalized variants as reserved", () => {
+    const out = ensureReservedToolSchemas(flat(["Read", "Bash"]));
+    expect(propsOf(out[0])).toEqual({});
+    expect(propsOf(out[1])).toEqual({});
+  });
+
+  it("drops duplicate declarations of one name", () => {
+    const out = ensureReservedToolSchemas(flat(["get_weather", "get_weather", "read", "read"]));
+    expect(names(out)).toEqual(["get_weather", "read"]);
+  });
+
+  it("handles the nested chat shape", () => {
+    const out = ensureReservedToolSchemas(chat(["read"]));
+    expect(Object.keys(propsOf(out[0])).length).toBeGreaterThan(0);
+    expect(out[0].function.name).toBe("read");
   });
 });
 
@@ -179,12 +184,13 @@ describe("opencodeFingerprint — response side", () => {
 });
 
 describe("fingerprintToolKey", () => {
-  it("maps quartet case/whitespace variants and rejects other tools", () => {
-    expect(fingerprintToolKey("Bash")).toBe("bash");
-    expect(fingerprintToolKey(" bash ")).toBe("bash");
-    expect(fingerprintToolKey("GLOB")).toBe("glob");
-    expect(fingerprintToolKey("Read")).toBe("read");
-    expect(fingerprintToolKey("Edit")).toBe("");
+  it("matches reserved names case-sensitively and rejects everything else", () => {
+    expect(fingerprintToolKey("read")).toBe("read");
+    expect(fingerprintToolKey(" read ")).toBe("read");
+    expect(fingerprintToolKey("bash")).toBe("bash");
+    expect(fingerprintToolKey("shell")).toBe("shell");
+    expect(fingerprintToolKey("Read")).toBe("");
+    expect(fingerprintToolKey("Bash")).toBe("");
     expect(fingerprintToolKey("terminal")).toBe("");
     expect(fingerprintToolKey(null)).toBe("");
   });

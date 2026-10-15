@@ -4,6 +4,9 @@ import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {
+  applyFingerprintTools,
+} from "../utils/opencodeFingerprint.js";
+import {
   normalizeResponsesInput,
   clampResponsesCallId,
   coerceResponsesArguments,
@@ -16,19 +19,15 @@ const MAX_SESSION_LENGTH = 256;
 
 const RESPONSES_BASE_URL = "https://opencode.ai/zen/v1/responses";
 const MAX_TOOL_NAME_LEN = 128;
-const OPENCODE_UA = "opencode/1.19.0";
+// v2 CLI User-Agent. Upstream rejects the v1 "opencode/1.18.x" form.
+const OPENCODE_UA = "opencode/latest/2.0.29/cli";
 export const OPENCODE_SESSION_RE = /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/;
 const BASE62_CHARS = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-// Free-tier fingerprint (mirrors opencode executor, PR #4132): upstream 403s
-// requests without the file-search quartet and without stream:true.
-const OPENCODE_FINGERPRINT_TOOLS = ["bash", "glob", "grep", "read"];
 
+// The v2 CLI User-Agent shape. Only v2 is accepted by the free-tier gate.
 function hasValidOpencodeVersion(ua) {
-  const m = String(ua || "").match(/opencode\/(\d+)\.(\d+)(?:\.(\d+))?/i);
-  if (!m) return false;
-  const major = parseInt(m[1], 10);
-  const minor = parseInt(m[2], 10);
-  return major > 1 || (major === 1 && minor >= 17);
+  const m = String(ua || "").match(/^opencode\/[a-z0-9-]+\/(\d+)\.\d+\.\d+\/[a-z0-9-]+$/i);
+  return !!m && parseInt(m[1], 10) >= 2;
 }
 
 function unstableRandom() {
@@ -49,17 +48,6 @@ export function generateSessionId(timestamp = Date.now()) {
       .padStart(2, "0")
   ).join("");
   return `ses_${time}${unstableRandom()}`;
-}
-
-export function generateRequestId(timestamp = Date.now()) {
-  const current = BigInt(timestamp) * 0x1000n + 1n;
-  const value = current;
-  const time = Array.from({ length: 6 }, (_, index) =>
-    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
-      .toString(16)
-      .padStart(2, "0")
-  ).join("");
-  return `msg_${time}${unstableRandom()}`;
 }
 
 const translatedZenSessions = new Map();
@@ -97,61 +85,6 @@ export function translateSessionId(sessionId, clientTool = "", timestamp = Date.
   }
   translatedZenSessions.set(cacheKey, { sessionId: id, lastUsed: Date.now() });
   return id;
-}
-
-function toolNameOf(tool) {
-  if (!tool || typeof tool !== "object" || Array.isArray(tool)) return "";
-  const fn = tool.function && typeof tool.function === "object" && !Array.isArray(tool.function) ? tool.function : null;
-  const raw = typeof tool.name === "string" ? tool.name : (typeof fn?.name === "string" ? fn.name : "");
-  return raw.trim();
-}
-
-function ensureChatFingerprintTools(body) {
-  if (!body || typeof body !== "object") return;
-  const present = new Set();
-  if (Array.isArray(body.tools)) {
-    for (const tool of body.tools) {
-      const name = toolNameOf(tool);
-      if (name) present.add(name);
-    }
-  } else {
-    body.tools = [];
-  }
-  for (const name of OPENCODE_FINGERPRINT_TOOLS) {
-    if (present.has(name)) continue;
-    body.tools.push({
-      type: "function",
-      function: {
-        name,
-        description: `OpenCode built-in ${name} tool`,
-        parameters: { type: "object", properties: {} },
-      },
-    });
-    present.add(name);
-  }
-}
-
-function ensureResponsesFingerprintTools(body) {
-  if (!body || typeof body !== "object") return;
-  const present = new Set();
-  if (Array.isArray(body.tools)) {
-    for (const tool of body.tools) {
-      const name = toolNameOf(tool);
-      if (name) present.add(name);
-    }
-  } else {
-    body.tools = [];
-  }
-  for (const name of OPENCODE_FINGERPRINT_TOOLS) {
-    if (present.has(name)) continue;
-    body.tools.push({
-      type: "function",
-      name,
-      description: `OpenCode built-in ${name} tool`,
-      parameters: { type: "object", properties: {} },
-    });
-    present.add(name);
-  }
 }
 
 function normalizeSession(value) {
@@ -300,15 +233,15 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     const downstreamUa = lower["user-agent"] || "";
     // Free-tier gate: spoof the official client UA.
     headers["User-Agent"] = hasValidOpencodeVersion(downstreamUa) ? downstreamUa : OPENCODE_UA;
-    headers["x-opencode-client"] = lower["x-opencode-client"] || "desktop";
+    headers["x-opencode-client"] = lower["x-opencode-client"] || "cli";
     const prepared = credentials?.[SESSION_FIELD];
-    if (prepared) {
-      headers[SESSION_HEADER] = prepared;
-      return headers;
-    }
-
-    const fallback = this.prepareRequestCredentials({ credentials });
-    headers[SESSION_HEADER] = fallback[SESSION_FIELD];
+    const session = prepared || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
+    headers[SESSION_HEADER] = session;
+    // The free tier also requires the v2 session-id aliases next to
+    // x-opencode-session; without them the gate answers 403 FreeTierError.
+    headers["x-opencode-session-id"] = session;
+    headers["x-session-affinity"] = session;
+    headers["x-session-id"] = session;
     return headers;
   }
 
@@ -317,7 +250,7 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     // Free-tier gate: upstream 403s stream:false even when everything else is valid.
     if (out && typeof out === "object") out.stream = true;
     if (!isResponsesModel(model || body?.model)) {
-      ensureChatFingerprintTools(out);
+      applyFingerprintTools(out, false);
       return out;
     }
     const normalized = normalizeResponsesInput(out.input);
@@ -348,9 +281,11 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     delete out.reasoning_effort;
     out.stream = true;
     out.store = false;
-    ensureResponsesFingerprintTools(out);
     normalizeResponsesTools(out);
     sanitizeResponsesItems(out);
+    // Runs after normalizeResponsesTools, which fills missing properties maps
+    // with an empty object — itself a 403 trigger for reserved names.
+    applyFingerprintTools(out, true);
     return out;
   }
 }

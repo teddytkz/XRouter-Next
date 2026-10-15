@@ -1,3 +1,14 @@
+# XRouter-Next v0.1.9 (2026-10-15)
+
+## Fixes
+- **OpenCode Free**: resolve the `403 FreeTierError` regression introduced by upstream's 2026-10-14 gate change. Live probing against `opencode.ai` isolated five independent conditions that must all hold; the previous fix (v0.1.7) targeted the retired gate and had become a cause of the failure. Changes:
+  - **Endpoint**: `/zen/v1/*` now answers every keyless free request with 403; `opencode` moved to `/inference/v1/{chat/completions,responses,messages}` (`buildUrl`). `opencode-zen` (PAYG) and `opencode-go` (subscription) stay on `/zen/v1` and `/zen/go/v1`, which remain valid for keyed lanes.
+  - **Headers**: `x-opencode-request` is itself a 403 trigger and is no longer sent; the v2 aliases `x-opencode-session-id`, `x-session-affinity` and `x-session-id` are now sent alongside `x-opencode-session`. Dropped the whole request-id derivation path (`generateRequestId`/`deriveRequestId`/`resolveOpencodeRequestId`), which is no longer reachable.
+  - **User-Agent**: bumped to the v2 shape `opencode/latest/2.0.29/cli`. The v1 `opencode/1.18.x` form is rejected; a browser string is rejected; `hasValidOpencodeVersion` now anchors to the `opencode/` token and requires major ≥ 2.
+  - **Tools**: the gate requires a tool named exactly `read` (lowercase; `Read`/`READ` do not count) and requires every declaration named one of the reserved lowercase set (`read`/`write`/`edit`/`glob`/`grep`/`bash`/`shell`) to carry a non-empty `parameters.properties` map — `properties: {}` answers 403. The fingerprint module now fills empty reserved-name schemas instead of appending `bash`/`glob`/`grep`/`read` stubs, and no longer lowercases the caller's tools (which converted a passing `Bash` into a reserved `bash` that then failed the schema check). Duplicate declarations of one name are dropped (upstream answers 400).
+  - **Registry**: `systemoneConfig` and `modelsFetcher` moved to `/inference/v1`, UA/client updated to the v2 pair.
+- Verified end-to-end through the real executor: `big-pickle`, `nemotron-3-ultra-free` (with Claude Code–style `Read` tool) and `muse-spark-1.3-contributor-free` all return live HTTP 200.
+
 # XRouter-Next v0.1.6 (2026-10-12)
 
 Fork version line, bumped independently of upstream `v0.5.x`. Upstream syncs arrive as their own `# vX.Y.Z`

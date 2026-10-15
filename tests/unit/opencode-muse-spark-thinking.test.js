@@ -73,7 +73,7 @@ describe("OpenCode Free Muse Spark thinking", () => {
 
     expect(getModelTargetFormat("oc", "union-alpha")).toBe(FORMATS.CLAUDE);
     const url = executor.buildUrl("union-alpha");
-    expect(url).toBe("https://opencode.ai/zen/v1/messages");
+    expect(url).toBe("https://opencode.ai/inference/v1/messages");
     expect(executor.buildHeaders({}, true, url)).toMatchObject({
       "anthropic-version": "2023-06-01",
     });
@@ -100,7 +100,7 @@ describe("OpenCode Free Muse Spark thinking", () => {
     const executor = new OpenCodeExecutor();
     const body = { messages: [{ role: "user", content: "hi" }], max_tokens: 1024 };
     executor.transformRequest("big-pickle", body, true, {});
-    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/zen/v1/chat/completions");
+    expect(executor.buildUrl("big-pickle")).toBe("https://opencode.ai/inference/v1/chat/completions");
     expect(body.max_tokens).toBe(1024);
     expect(body.max_output_tokens).toBeUndefined();
   });
@@ -136,8 +136,8 @@ describe("OpenCode Free Muse Spark thinking", () => {
     const futureModel = "muse-spark-1.4-contributor-free";
 
     for (const m of ["muse-spark-1.3-contributor-free", futureModel]) {
-      expect(executor.buildUrl(m)).toBe("https://opencode.ai/zen/v1/responses");
-      expect(executor.buildUrl(`${m}(high)`)).toBe("https://opencode.ai/zen/v1/responses");
+      expect(executor.buildUrl(m)).toBe("https://opencode.ai/inference/v1/responses");
+      expect(executor.buildUrl(`${m}(high)`)).toBe("https://opencode.ai/inference/v1/responses");
       expect(getModelTargetFormat("oc", m)).toBe("openai-responses");
 
       const body = {
@@ -214,39 +214,15 @@ describe("OpenCode Free Muse Spark thinking", () => {
     // User message, function_call, function_call_output, and next user message survive
     const types = out.input.map((item) => item.type);
     expect(types).toEqual(["message", "function_call", "function_call_output", "message"]);
-    // Tools flattened and empty properties added; the free-tier fingerprint
-    // quartet (bash/glob/grep/read) is appended after the client's own tools.
-    expect(out.tools).toEqual([
-      {
-        type: "function",
-        name: "shell",
-        description: "Run shell command",
-        parameters: { type: "object", properties: {} },
-      },
-      {
-        type: "function",
-        name: "bash",
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
-      },
-      {
-        type: "function",
-        name: "glob",
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
-      },
-      {
-        type: "function",
-        name: "grep",
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
-      },
-      {
-        type: "function",
-        name: "read",
-        description: "This tool is currently unavailable and must not be used.",
-        parameters: { type: "object", properties: {} },
-      },
-    ]);
+    // Tools flattened into the Responses shape. `shell` is a reserved lowercase
+    // name, so its empty properties map is filled; the missing fingerprint
+    // member (`read`) is appended after the client's own tools.
+    expect(out.tools.map((t) => t.name)).toEqual(["shell", "read"]);
+    for (const tool of out.tools) {
+      expect(tool.type).toBe("function");
+      expect(tool.parameters.type).toBe("object");
+      expect(Object.keys(tool.parameters.properties).length).toBeGreaterThan(0);
+    }
+    expect(out.tools[0].description).toBe("Run shell command");
   });
 });
