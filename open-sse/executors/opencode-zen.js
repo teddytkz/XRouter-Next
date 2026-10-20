@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { DefaultExecutor } from "./default.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
-import { isMuseSparkModel } from "../providers/models/helpers.js";
+import { isMuseSparkModel, isOpencodeFreeTierModel } from "../providers/models/helpers.js";
 import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import {
   applyFingerprintTools,
@@ -48,6 +48,16 @@ export function generateSessionId(timestamp = Date.now()) {
       .padStart(2, "0")
   ).join("");
   return `ses_${time}${unstableRandom()}`;
+}
+
+export function generateRequestId(timestamp = Date.now()) {
+  const value = BigInt(timestamp) * 0x1000n + 1n;
+  const time = Array.from({ length: 6 }, (_, index) =>
+    Number((value >> BigInt(40 - 8 * index)) & 0xffn)
+      .toString(16)
+      .padStart(2, "0")
+  ).join("");
+  return `msg_${time}${unstableRandom()}`;
 }
 
 const translatedZenSessions = new Map();
@@ -234,6 +244,7 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     // Free-tier gate: spoof the official client UA.
     headers["User-Agent"] = hasValidOpencodeVersion(downstreamUa) ? downstreamUa : OPENCODE_UA;
     headers["x-opencode-client"] = lower["x-opencode-client"] || "cli";
+    headers["x-opencode-project"] = lower["x-opencode-project"] || "global";
     const prepared = credentials?.[SESSION_FIELD];
     const session = prepared || this.prepareRequestCredentials({ credentials })[SESSION_FIELD];
     headers[SESSION_HEADER] = session;
@@ -242,6 +253,13 @@ export class OpenCodeZenExecutor extends DefaultExecutor {
     headers["x-opencode-session-id"] = session;
     headers["x-session-affinity"] = session;
     headers["x-session-id"] = session;
+    if (isOpencodeFreeTierModel(model)) {
+      // -free models use the attested free-tier identity even on the keyed lane:
+      // a real oc_sk_* key answers 403 FreeTierError, `Bearer public` + request id
+      // succeed. Paid models keep the connection key untouched.
+      headers["Authorization"] = "Bearer public";
+      headers["x-opencode-request"] = generateRequestId();
+    }
     return headers;
   }
 
