@@ -1,41 +1,6 @@
 # XRouter-Next v0.1.9 (2026-10-15)
 
 ## Fixes
-- **OpenCode Free**: resolve the `403 FreeTierError` regression introduced by upstream's 2026-10-14 gate change. Live probing against `opencode.ai` isolated five independent conditions that must all hold; the previous fix (v0.1.7) targeted the retired gate and had become a cause of the failure. Changes:
-  - **Endpoint**: `/zen/v1/*` now answers every keyless free request with 403; `opencode` moved to `/inference/v1/{chat/completions,responses,messages}` (`buildUrl`). `opencode-zen` (PAYG) and `opencode-go` (subscription) stay on `/zen/v1` and `/zen/go/v1`, which remain valid for keyed lanes.
-  - **Headers**: `x-opencode-request` is itself a 403 trigger and is no longer sent; the v2 aliases `x-opencode-session-id`, `x-session-affinity` and `x-session-id` are now sent alongside `x-opencode-session`. Dropped the whole request-id derivation path (`generateRequestId`/`deriveRequestId`/`resolveOpencodeRequestId`), which is no longer reachable.
-  - **User-Agent**: bumped to the v2 shape `opencode/latest/2.0.29/cli`. The v1 `opencode/1.18.x` form is rejected; a browser string is rejected; `hasValidOpencodeVersion` now anchors to the `opencode/` token and requires major ≥ 2.
-  - **Tools**: the gate requires a tool named exactly `read` (lowercase; `Read`/`READ` do not count) and requires every declaration named one of the reserved lowercase set (`read`/`write`/`edit`/`glob`/`grep`/`bash`/`shell`) to carry a non-empty `parameters.properties` map — `properties: {}` answers 403. The fingerprint module now fills empty reserved-name schemas instead of appending `bash`/`glob`/`grep`/`read` stubs, and no longer lowercases the caller's tools (which converted a passing `Bash` into a reserved `bash` that then failed the schema check). Duplicate declarations of one name are dropped (upstream answers 400).
-  - **Registry**: `systemoneConfig` and `modelsFetcher` moved to `/inference/v1`, UA/client updated to the v2 pair.
-- Verified end-to-end through the real executor: `big-pickle`, `nemotron-3-ultra-free` (with Claude Code–style `Read` tool) and `muse-spark-1.3-contributor-free` all return live HTTP 200.
-
-# XRouter-Next v0.1.6 (2026-10-12)
-
-Fork version line, bumped independently of upstream `v0.5.x`. Upstream syncs arrive as their own `# vX.Y.Z`
-blocks below; fork-local work is listed here or under a `## Fork-local (XRouter-Next)` heading inside the
-upstream block it was built on. Sync/port details: [`docs/upgrades/`](./docs/upgrades/README.md).
-
-## Features
-- **Providers**: ported 29 providers from the VansRouter fork — `94 → 122` total, a strict superset of upstream. `ai21`, `alibaba`, `baseten`, `bytez`, `codestral`, `databricks`, `deepinfra`, `friendliai`, `galadriel`, `gigachat`, `heroku`, `hive`, `llamagate`, `meta`, `nanogpt`, `nscale`, `ovhcloud`, `predibase`, `publicai`, `snowflake`, `upstage`, `volcengine`, `wandb`, `zenmux`, `a6api` (pure registry) + `qwen` (device-code OAuth), `agentrouter`, `muse-spark-web` (cookie web), plus the fork-only `freebuff`. New executors: `QwenExecutor`, `AgentRouterExecutor`, `MuseSparkWebExecutor`. `muse-spark-web` deliberately does not claim the `muse` alias (the fork's Meta Muse owns it) and standalone `zcode` stays skipped because the fork folds ZCode OAuth into `glm` (`30395ece`)
-- **Token saver skills**: bumped to the VansRouter defaults (`skills/*/manifest.json`, `TokenSaverClient.js`)
-- **Usage**: added the **This Month** period (calendar month-to-date, resets on the 1st) to the selector, chart and stats APIs (`ce628c63`)
-- **Usage**: replaced the topology graph with `ProviderActivityList` — one row per provider with a status light and the models it served in the last 24h as chips; in-flight models blink, `activeRequests[]` keeps several models per provider distinguishable, polling drops to 30s when idle and sweeps stale in-flight keys (`ed6ecbad`)
-
-## Fixes
-- **OpenCode Free**: resolve `403 FreeTierError` on `opencode` 1.19.0+ — the free-tier gate decodes the first 6 hex bytes of `x-opencode-session` (`ses_…`) and `x-opencode-request` (`msg_…`) as a genuine ms timestamp; the fork emitted the raw SHA-256 digest prefix (non-monotonic), so upstream rejected it as not-from-CLI. `translateSessionId`/`deriveRequestId` now encode `~(ts*0x1000+counter)` / `ts*0x1000+1` and cache the minted id so retries stay idempotent; spoofed UA bumped to `opencode/1.19.0`. Also harden `/zen/v1/responses`: sanitize tool names to `^[a-zA-Z0-9_-]+$` (MCP `:`/`.` 400s), pair orphan `function_call`/`function_call_output` items, and clamp `max_output_tokens` to `[16, model maxOutput]` (live-probed; keeps Muse Spark's 131072). Claude Code tool-input aliases (`cmd`→`command`, `path`→`file_path`, `query`→`pattern`) are normalized on both streaming and non-streaming paths (ported from upstream PR #4786)
-
-## Security
-- **Bounded request body**: `handleChat` checks `Content-Length` and counts stream bytes; over the cap (default 8 MB, `NINEROUTER_MAX_BODY_BYTES`) answers **413** without parsing into the heap
-- **429 classification**: `classify429` splits `rate_limit` (60s), `quota_exhausted` (≈1h) and `daily_quota` (locked to 00:00 UTC) instead of one generic backoff; an existing daily lock is never overwritten by a shorter backoff
-- **Cooldown-aware retry**: when every account carries a `retryAfter` under 30s, wait and retry once instead of failing with 503
-- **Password strength policy**: `INITIAL_PASSWORD` must be ≥12 chars and not a known placeholder — a weak production value no longer issues a session (login 503), and `PATCH /api/settings` rejects a weak new password (400)
-
-## Ops
-- Durable proxy-pool fitness store (SQLite migration `002`, `proxyPoolFitnessRepo`, `/api/proxy-pools/fitness*`, **Proxy Fitness** page); `freebuff` skips unfit pools and fails open
-- `GET /api/ready` readiness probe (503 until the DB answers `SELECT 1`); `/api/providers/bulk` and `gcp-projects` routes
-- Routing health (EMA latency, circuit breaker) with an SSE latency stream, model probe/ranking and `POST /api/combos/suggest`
-
-Port batches landed as `30395ece` (providers + token saver) and `897c5e96` (security/ops hardening); regression gate: 0 new failures. Ledger: [`docs/upgrades/v0.1.5-2026-10-11.md`](./docs/upgrades/v0.1.5-2026-10-11.md).
 
 # v0.5.104 (2026-10-15)
 
