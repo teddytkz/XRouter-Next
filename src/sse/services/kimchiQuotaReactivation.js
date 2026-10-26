@@ -41,3 +41,12 @@ export async function reactivateExpiredKimchiAccounts() {
   if (reactivated > 0) log.info("AUTH", `Kimchi quota reactivation: ${reactivated} account(s) reactivated`);
   return reactivated;
 }
+
+/** Runs the sweep once on boot, then hourly. Call only from the Node runtime. */
+export function startKimchiQuotaReactivation() {
+  const sweep = () => reactivateExpiredKimchiAccounts().catch((e) => {
+    log.warn("AUTH", `Kimchi quota reactivation failed: ${e?.message || e}`);
+  });
+  sweep();
+  setInterval(sweep, 60 * 60 * 1000).unref?.();
+}

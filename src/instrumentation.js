@@ -17,22 +17,7 @@ export async function register() {
     const { startBackgroundTokenRefresh } = await import("@/sse/services/backgroundTokenRefresh.js");
     startBackgroundTokenRefresh();
 
+    const { startKimchiQuotaReactivation } = await import("@/sse/services/kimchiQuotaReactivation.js");
     startKimchiQuotaReactivation();
   }
-}
-
-// Kimchi's monthly quota resets on the calendar, but a quota-exhausted
-// connection stays inactive until flipped back — run once on boot, then hourly.
-function startKimchiQuotaReactivation() {
-  const sweep = async () => {
-    try {
-      const { reactivateExpiredKimchiAccounts } = await import("@/sse/services/kimchiQuotaReactivation.js");
-      await reactivateExpiredKimchiAccounts();
-    } catch (e) {
-      console.warn("[instrumentation] Kimchi quota reactivation failed:", e?.message || e);
-    }
-  };
-  sweep();
-  const timer = setInterval(sweep, 60 * 60 * 1000);
-  timer.unref?.();
 }
