@@ -1,3 +1,27 @@
+# XRouter-Next v0.1.10 (2026-10-26)
+
+Sync upstream `v0.5.104 → v0.5.109` (36 commit; `38a0c449` web-cookie ditunda). Detail: [`docs/upgrades/v0.5.109-2026-10-26.md`](./docs/upgrades/v0.5.109-2026-10-26.md).
+
+## Features
+- **Combos**: Smart Router (System One) dengan adaptive session stickiness (Smart Switch / Strict Lock / Per-Turn) + modal policy di dashboard; search box untuk daftar combo
+- **Provider**: SenseNova (`sensenova`) — 124 provider total
+- **Ollama**: model keputusan System One (`clef`, `clef-flash`)
+- **Token saver**: custom system prompt buatan user (`customPromptEnabled`/`customPrompt`), independen dari caveman/ponytail
+- **STT**: provider transkripsi Codex OAuth (`codex/transcribe`)
+- **Image**: reference image input untuk Gemini/Antigravity
+
+## Fixes
+- **Combo**: lanjut ke model berikutnya saat member menolak request-scoped 4xx (bukan mengakhiri combo), saat kredit habis, dan saat respons streaming kosong; kembalikan respons member pertama bila semua menolak
+- **Stream**: isi tool-call id yang hilang dan pulihkan nama tool yang di-rename pada jalur passthrough
+- **DB**: buang byte NUL dari parameter SQLite yang di-bind
+- **Headroom**: kompres tool output native Gemini/Responses dan request CommandCode
+- **Kiro**: normalisasi model id Anthropic ke alias upstream Kiro
+- **OpenAI**: `max_tokens` → `max_completion_tokens` untuk model yang menolak yang pertama
+- **Qoder**: queue rewrite, model queued tidak lagi gagal, Sonus/Cantus ter-route
+- **CodeBuddy**: backoff untuk koneksi internasional yang diblokir
+- **Keamanan**: undici 7.30.1, headroom bind ke loopback, Node 22.23.4
+- **Dashboard**: panduan visibilitas API key, Monaco 0.57.0 dipin, kartu koneksi media non-STT dipertahankan
+
 # XRouter-Next v0.1.9 (2026-10-15)
 
 ## Fixes
