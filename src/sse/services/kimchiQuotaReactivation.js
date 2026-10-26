@@ -1,4 +1,5 @@
 import * as log from "../utils/logger.js";
+import { getProviderConnections, updateProviderConnection } from "../../lib/localDb.js";
 
 // Kimchi's monthly quota resets at the start of the month, but a quota-exhausted
 // connection stays inactive until something flips it back. Nothing else does.
@@ -14,14 +15,6 @@ function reactivatedUpdate() {
 
 /** Reactivates kimchi connections whose quota cooldown has expired. */
 export async function reactivateExpiredKimchiAccounts() {
-  // webpackIgnore keeps better-sqlite3 (and its Node built-ins) out of the
-  // instrumentation bundle; the relative path is required because
-  // webpackIgnore also disables @ alias resolution.
-  const { getProviderConnections, updateProviderConnection } = await import(
-    /* webpackIgnore: true */
-    "../../lib/localDb.js"
-  );
-
   let connections;
   try {
     connections = await getProviderConnections({ provider: "kimchi", isActive: false });
