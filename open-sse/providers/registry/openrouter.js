@@ -2,6 +2,7 @@ export default {
   id: "openrouter",
   priority: 10,
   hasFree: true,
+  freeRefresh: "daily",
   alias: "openrouter",
   display: {
     name: "OpenRouter",

@@ -93,4 +93,4 @@ gambaran sistem.
 | v0.5.79 → v0.5.99 | `ce4460ef` | 2026-10-10 | [v0.5.99-2026-10-10.md](./v0.5.99-2026-10-10.md) | 151 commit via merge: 48 file konflik, 0 regresi |
 | Port VansRouter | — (fork saudara) | 2026-10-11 | [v0.1.5-2026-10-11.md](./v0.1.5-2026-10-11.md) | 29 provider + token saver + security/ops hardening, 0 regresi |
 | v0.5.104 → v0.5.109 | `f39d8f07` | 2026-10-26 | [v0.5.109-2026-10-26.md](./v0.5.109-2026-10-26.md) | 36 cherry-pick (web-cookie ditunda), 4 konflik manual, 0 regresi |
-| Port VansRouter (gap) | — (fork saudara) | 2026-10-26 | [v0.1.10-2026-10-26-vans-gap.md](./v0.1.10-2026-10-26-vans-gap.md) | CodeBuddy channel sanitasi + loop guard aktif, 0 regresi |
+| Port VansRouter (gap) | — (fork saudara) | 2026-10-26 | [v0.1.10-2026-10-26-vans-gap.md](./v0.1.10-2026-10-26-vans-gap.md) | CodeBuddy sanitasi, loop guard, apiKeyName, kuota Kimchi, free tier, context_length combo, 0 regresi |

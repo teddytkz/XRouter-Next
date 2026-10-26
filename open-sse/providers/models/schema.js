@@ -14,7 +14,9 @@ export const MODEL_DEFAULTS = {
   kind: "llm",
   quotaFamily: "normal",
   strip: [],
-  targetFormat: null
+  targetFormat: null,
+  hasFree: false,
+  freeRefresh: null
 };
 
 // Normalize a registry model entry: accept terse "id" string, fill name via regex when omitted.
@@ -26,6 +28,12 @@ export function normalizeModel(raw) {
 }
 
 // Resolve model kind with default (accepts legacy `type` field)
+export function modelHasFree(model) {
+  return model?.hasFree ?? MODEL_DEFAULTS.hasFree;
+}
+export function modelFreeRefresh(model) {
+  return model?.freeRefresh ?? MODEL_DEFAULTS.freeRefresh;
+}
 export function modelKind(model) {
   return model?.kind || model?.type || MODEL_DEFAULTS.kind;
 }

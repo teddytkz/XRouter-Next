@@ -11,6 +11,7 @@ import { handleAntigravityQuotaError, clearAntigravityStrikes } from "../service
 import { readBoundedJson } from "../utils/boundedBody.js";
 import { maybeWaitForCooldown, MAX_COOLDOWN_RETRIES } from "open-sse/utils/cooldownRetry.js";
 import { getSettings } from "@/lib/localDb";
+import { getApiKeyByKey } from "@/lib/db/repos/apiKeysRepo.js";
 import { getModelInfo, getComboModels } from "../services/model.js";
 import { handleChatCore } from "open-sse/handlers/chatCore.js";
 import { DEFAULT_HEADROOM_URL } from "@/lib/headroom/detect";
@@ -212,6 +213,8 @@ export async function handleChat(request, clientRawRequest = null) {
  * Handle single model chat request
  */
 async function handleSingleModelChat(body, modelStr, clientRawRequest = null, request = null, apiKey = null, requestedModel = null) {
+  // Shown in request details; the raw key is never persisted there.
+  const apiKeyName = apiKey ? (await getApiKeyByKey(apiKey))?.name || null : null;
   const modelInfo = await getModelInfo(modelStr);
 
   // If provider is null, this might be a combo name - check and handle
@@ -560,6 +563,7 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
       connectionId: credentials.connectionId,
       userAgent,
       apiKey,
+      apiKeyName,
       eccSkills: matchedSkills.length > 0 ? matchedSkills : undefined,
       ccFilterNaming: !!chatSettings.ccFilterNaming,
       rtkEnabled: !!chatSettings.rtkEnabled,

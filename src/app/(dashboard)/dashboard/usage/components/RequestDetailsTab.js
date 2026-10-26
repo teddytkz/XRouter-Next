@@ -377,6 +377,12 @@ export default function RequestDetailsTab() {
                 <span className="text-text-muted">Model:</span>{" "}
                 <span className="text-text-main font-mono">{selectedDetail.model}</span>
               </div>
+              {selectedDetail.apiKeyName && (
+                <div>
+                  <span className="text-text-muted">API key:</span>{" "}
+                  <span className="text-text-main">{selectedDetail.apiKeyName}</span>
+                </div>
+              )}
               <div>
                 <span className="text-text-muted">Status:</span>{" "}
                 <span className={cn(

@@ -52,3 +52,17 @@ describe("request-details redaction", () => {
     expect(out.latency).toEqual({ total: 100 });
   });
 });
+
+describe("request detail api key attribution", () => {
+  it("keeps the key name and never the raw key", async () => {
+    const { buildRequestDetail } = await import("../../open-sse/handlers/chatCore/requestDetail.js");
+    const detail = buildRequestDetail({
+      provider: "codebuddy-intl",
+      model: "hy3",
+      apiKey: "sk-live-secret",
+      apiKeyName: "laptop",
+    });
+    expect(detail.apiKeyName).toBe("laptop");
+    expect(JSON.stringify(detail)).not.toContain("sk-live-secret");
+  });
+});

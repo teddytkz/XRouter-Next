@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCombos, createCombo, getComboByName } from "@/lib/localDb";
+import { validateContextLength } from "./[id]/route.js";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +39,10 @@ export async function POST(request) {
       return NextResponse.json({ error: "Combo name already exists" }, { status: 400 });
     }
 
-    const combo = await createCombo({ name, models: models || [], kind: kind || null });
+    const ctx = validateContextLength(body.context_length);
+    if (!ctx.ok) return NextResponse.json({ error: ctx.error }, { status: 400 });
+
+    const combo = await createCombo({ name, models: models || [], kind: kind || null, context_length: ctx.value });
 
     return NextResponse.json(combo, { status: 201 });
   } catch (error) {
