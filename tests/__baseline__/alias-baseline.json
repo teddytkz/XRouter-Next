@@ -395,6 +395,7 @@
     "oc",
     "ocz",
     "ollama",
+    "ollama-local",
     "openai",
     "openai-tts-models",
     "openai-tts-voices",

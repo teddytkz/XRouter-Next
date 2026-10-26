@@ -119,3 +119,13 @@ tests/unit/windsurf-executor.test.js :: WindsurfExecutor class buildUrl returns 
 tests/unit/windsurf-executor.test.js :: WindsurfExecutor class constructor wires config from PROVIDERS.windsurf
 tests/unit/cline-free-models-envelope.test.js :: cline /api/v1/models aggregation (resolveClineModels vs resolveClinepassModels) resolveClinepassModels returns only cline-pass/ models
 tests/unit/cline-free-models-envelope.test.js :: cline /api/v1/models aggregation (resolveClineModels vs resolveClinepassModels) resolveClineModels returns null on fetch error
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) cline → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) clinepass → headers (apiKey / oauth)
+tests/translator/golden-url-header.test.js :: GOLDEN buildHeaders (default executor providers) kimi → headers (apiKey / oauth)
+tests/unit/codex-stt-persisted-refresh.test.js :: uses the real persisted refresh service before sending expired-account OAuth audio
+tests/unit/codex-stt-transport.test.js :: converts real stereo 48k WAV to mono24k PCM16 and removes temporary files
+tests/unit/codex-stt-transport.test.js :: rejects malformed and overlong audio and cleans up
+tests/unit/codex-stt-transport.test.js :: sends only the converted file and projects upstream metadata out of the response through a local relay
+tests/unit/headroom-responses-format.test.js :: compressWithHeadroom openai-responses format (#1998) skips Responses tool/reasoning history instead of collapsing it into a message (#2132)
+tests/unit/opencode-fingerprint-passthrough-restore.test.js :: opencode fingerprint — tool name restore on the passthrough path renames a colliding caller tool to an alias
+tests/unit/opencode-fingerprint-passthrough-restore.test.js :: opencode fingerprint — tool name restore on the passthrough path restores the caller's tool name in the passthrough stream
