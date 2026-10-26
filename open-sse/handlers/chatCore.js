@@ -26,6 +26,8 @@ import { injectCaveman } from "../rtk/caveman.js";
 import { injectPonytail } from "../rtk/ponytail.js";
 import { injectGenericPrompt } from "../rtk/genericPrompt.js";
 import { injectCustomPrompt } from "../rtk/customPrompt.js";
+import { injectTerminationPrompt } from "../rtk/terminationPrompt.js";
+import { detectLoop } from "../utils/loopGuard.js";
 import { compressMessages, formatRtkLog } from "../rtk/index.js";
 import { trimRequestBody } from "../rtk/trim.js";
 import { compressWithHeadroom, formatHeadroomLog, formatHeadroomSizeLog, isHeadroomPhantomSavings } from "../rtk/headroom.js";
@@ -35,6 +37,51 @@ import { stripUnsupportedModalities } from "../translator/concerns/modality.js";
 import { prefetchRemoteImages } from "../translator/concerns/prefetch.js";
 import { defaultClaudeToolType, shouldDefaultClaudeToolType } from "../translator/concerns/toolCall.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
+
+// Kimi loops on agentic tasks; always give it the termination contract.
+export function needsTerminationPrompt(provider, model) {
+  return /(?:^|[/_-])kimi(?:[/_-]|$)|(?:^|[/_-])kimi-k2\.(?:6|7)(?:\b|[-_/])/i.test(`${provider}/${model}`);
+}
+
+/**
+ * Loop guard wiring: when detectLoop finds a repeated tool-call or text pattern
+ * in the translated history, inject the termination prompt and append a stop
+ * hint to the last user/tool message. Stateless and idempotent.
+ */
+export function applyLoopGuard(translatedBody, finalFormat, provider, model, log) {
+  const loopCheck = detectLoop(translatedBody);
+  if (!loopCheck.detected) return false;
+  injectTerminationPrompt(translatedBody, finalFormat);
+  const msgs = translatedBody?.messages;
+  if (Array.isArray(msgs)) {
+    let target = null;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m && (m.role === "user" || m.role === "tool")) {
+        target = m;
+        break;
+      }
+      // Text-only loop: nothing follows the repeated assistant turn.
+      if (m && m.role === "assistant" && i === msgs.length - 1) {
+        target = m;
+        break;
+      }
+    }
+    if (target) {
+      const hint = `\n\n[ROUTER NOTE: ${loopCheck.hint}]`;
+      if (typeof target.content === "string") {
+        if (!target.content.includes("[ROUTER NOTE:")) target.content += hint;
+      } else if (Array.isArray(target.content)) {
+        if (!target.content.some((p) => p.text && p.text.includes("[ROUTER NOTE:")))
+          target.content.push({ type: "text", text: hint });
+      } else {
+        target.content = hint.trimStart();
+      }
+    }
+  }
+  log?.warn?.("LOOPGUARD", `${provider}/${model} | loop detected, hint injected`);
+  return true;
+}
 
 /**
  * Core chat handler - shared between SSE and Worker
@@ -63,7 +110,7 @@ export function stripContinuityFields(body) {
   return body;
 }
 
-export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, activeGenericPrompts, eccSkills, trimEnabled, trimBudget, providerOverrides }) {
+export async function handleChatCore({ body, modelInfo, credentials, log, onCredentialsRefreshed, onRequestSuccess, onDisconnect, clientRawRequest, connectionId, userAgent, apiKey, ccFilterNaming, rtkEnabled, headroomEnabled, headroomUrl, headroomCompressUserMessages, headroomTimeoutMs, cavemanEnabled, cavemanLevel, ponytailEnabled, ponytailLevel, customPromptEnabled, customPrompt, pxpipeEnabled, pxpipeMinChars, pxpipeTimeoutMs, pxpipeTransform, onPxpipeEvent, sourceFormatOverride, providerThinking, activeGenericPrompts, eccSkills, trimEnabled, trimBudget, providerOverrides, loopGuardEnabled = true }) {
   const { provider, model } = modelInfo;
   const requestStartTime = Date.now();
   // Stable per-session color so all lines of one CLI conversation share a tag
@@ -346,6 +393,15 @@ export async function handleChatCore({ body, modelInfo, credentials, log, onCred
   // Custom prompt: user-authored instruction, independent of the savers above
   if (customPromptEnabled && injectCustomPrompt(translatedBody, finalFormat, customPrompt)) {
     xf.push(`CUSTOMPROMPT:${customPrompt.trim().length}c`);
+  }
+
+  if (loopGuardEnabled && applyLoopGuard(translatedBody, finalFormat, provider, model, log)) {
+    xf.push("LOOPGUARD");
+  }
+
+  if (needsTerminationPrompt(provider, model)) {
+    injectTerminationPrompt(translatedBody, finalFormat);
+    xf.push("TERMINATION");
   }
 
   // PXPIPE: image bulky context (Claude-format bodies only), last saver before dispatch

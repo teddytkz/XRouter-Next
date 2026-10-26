@@ -1,4 +1,9 @@
 import { DefaultExecutor } from "./default.js";
+import {
+  neutralizeCodeBuddyChannelIdentity,
+  compactOversizedTools,
+  captureRotatedToken,
+} from "./codebuddyShared.js";
 
 /**
  * CodeBuddyExecutor — talks to https://copilot.tencent.com/v2/chat/completions
@@ -12,6 +17,12 @@ import { DefaultExecutor } from "./default.js";
 export class CodeBuddyExecutor extends DefaultExecutor {
   constructor() {
     super("codebuddy-cn");
+  }
+
+  async execute(input) {
+    const result = await super.execute(input);
+    captureRotatedToken(result.response, input.credentials);
+    return result;
   }
 
   transformRequest(model, body, stream, credentials) {
@@ -62,6 +73,15 @@ export class CodeBuddyExecutor extends DefaultExecutor {
     // No reasoning requested: leave both unset. Forcing reasoning_effort:"medium"
     // + reasoning_summary on plain requests makes CodeBuddy trip its content
     // filter and return an error (#2071).
+
+    // Assistant history is scanned too; user/tool messages stay byte-for-byte.
+    if (Array.isArray(transformed.messages)) {
+      transformed.messages = neutralizeCodeBuddyChannelIdentity(transformed.messages);
+    }
+    if (Array.isArray(transformed.tools) && transformed.tools.length > 0) {
+      transformed.tools = compactOversizedTools(transformed.tools);
+    }
+
     return transformed;
   }
   parseError(response, bodyText) {

@@ -18,6 +18,15 @@ describe("checkFallbackError — request-scoped vs account-scoped failures", () 
     expect(result).toEqual({ shouldFallback: false, cooldownMs: 0, requestScoped: true });
   });
 
+  it("treats CodeBuddy's unapproved-channel 403 as request-scoped", () => {
+    const result = checkFallbackError(403, JSON.stringify({
+      code: 11128,
+      msg: "Illegal API invocation from an unapproved channel",
+    }));
+
+    expect(result).toEqual({ shouldFallback: false, cooldownMs: 0, requestScoped: true });
+  });
+
   it("still falls back for account-scoped statuses", () => {
     for (const status of [401, 402, 403, 404, 429]) {
       expect(checkFallbackError(status, "nope").shouldFallback).toBe(true);

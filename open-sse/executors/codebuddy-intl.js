@@ -1,5 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
 import { DefaultExecutor } from "./default.js";
+import {
+  neutralizeCodeBuddyChannelIdentity,
+  compactOversizedTools,
+  captureRotatedToken,
+} from "./codebuddyShared.js";
 
 /**
  * CodeBuddyIntlExecutor — talks to https://www.codebuddy.ai/v2/chat/completions
@@ -75,8 +80,15 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
     return headers;
   }
 
+  async execute(input) {
+    const result = await super.execute(input);
+    captureRotatedToken(result.response, input.credentials);
+    return result;
+  }
+
   transformRequest(model, body, stream, credentials) {
-    const transformed = super.transformRequest(model, body, stream, credentials);
+    const input = body && typeof body === "object" ? structuredClone(body) : body;
+    const transformed = super.transformRequest(model, input, stream, credentials);
     transformed.stream = true;
 
     const eff = transformed.reasoning_effort;
@@ -86,9 +98,12 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       transformed.reasoning_summary = "auto";
     }
 
+    // The WAF also scans assistant history for rival CLI identities.
+    const sanitized = neutralizeCodeBuddyChannelIdentity(transformed.messages);
+
     // CodeBuddy rejects plain OpenAI shape (11101 invalid request): needs a
     // leading system prompt + user content as typed blocks, not a bare string.
-    const source = Array.isArray(transformed.messages) ? transformed.messages : [];
+    const source = Array.isArray(sanitized) ? sanitized : [];
     transformed.messages = [{ role: "system", content: "You are CodeBuddy Code." }];
     for (const message of source) {
       if (!message || typeof message !== "object" || ["system", "developer"].includes(message.role)) continue;
@@ -97,6 +112,10 @@ export class CodeBuddyIntlExecutor extends DefaultExecutor {
       } else {
         transformed.messages.push({ ...message });
       }
+    }
+
+    if (Array.isArray(transformed.tools) && transformed.tools.length > 0) {
+      transformed.tools = compactOversizedTools(transformed.tools);
     }
 
     return transformed;
