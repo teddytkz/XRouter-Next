@@ -257,6 +257,12 @@ export const PROVIDER_CAPABILITIES = {
     // catalog overlay, so maxOutput must be stated here too).
     "claude-haiku-5-5": { vision: true, reasoning: true, search: true, thinkingFormat: "claude-adaptive", contextWindow: 1000000, maxOutput: 128000 },
   },
+  // deepseek-v4.1-flash-free: the backend rejects requests above ~330k prompt
+  // tokens (issue #5097). Cap the published context window at 330000 so clients
+  // (VS Code Copilot etc.) compact correctly instead of hard-failing mid-session.
+  "opencode": {
+    "deepseek-v4.1-flash-free": { vision: true, reasoning: true, thinkingFormat: "deepseek", contextWindow: 330000, maxOutput: 128000 },
+  },
   "commandcode": {
     // The generic commandcode fallback (1M/384k for every unlisted model) happened
     // to give haiku-5-5 the right context by accident. Pin it to the catalog values:
