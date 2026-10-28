@@ -169,6 +169,7 @@ import p165 from "./agentrouter.js";
 import p166 from "./muse-spark-web.js";
 import p167 from "./nous.js";
 import p169 from "./runcrate.js";
+import p170 from "./nace.js";
 export default [
   p0,
   p1,
@@ -338,4 +339,5 @@ export default [
   p166,
   p167,
   p169,
+  p170,
 ];
