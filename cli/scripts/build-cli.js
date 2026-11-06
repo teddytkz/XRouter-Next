@@ -246,6 +246,10 @@ function buildCliPackage() {
     console.log(`✅ Bundled ${pkg}`);
   }
   ensureModuleInBundle("sql.js");
+  // wreq-js is createRequire-loaded at runtime (OpenCode free-tier TLS). Tracing
+  // should include it, but the native binding lives in the scoped @wreq-js dir.
+  ensureModuleInBundle("wreq-js");
+  ensureModuleInBundle("@wreq-js");
   // `open` is external (see serverExternalPackages in next.config.mjs), so it must exist in
   // the bundle's node_modules or every importer throws MODULE_NOT_FOUND at runtime. Output
   // tracing normally copies it; this is the same belt-and-braces guard used for sql.js.

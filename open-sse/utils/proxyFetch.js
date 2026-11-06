@@ -255,7 +255,16 @@ async function fetchWithTlsFallback(url, options, proxyUrl) {
   try {
     // Protocol adapters may need Node's HTTP/1 transport on the direct path.
     // Keep proxy/no-proxy resolution and strict-proxy enforcement here.
-    if (!proxyUrl && options.directFetch) return await options.directFetch(url, options);
+    if (!proxyUrl && options.directFetch) {
+      try {
+        return await options.directFetch(url, options);
+      } catch (err) {
+        // A transport that cannot load its optional runtime (opencode's wreq-js)
+        // must still reach the upstream on native fetch instead of 502-ing.
+        if (!err?.directFetchFailOpen) throw err;
+        console.warn(`[ProxyFetch] ${err.message}`);
+      }
+    }
     const dispatcher = proxyUrl ? await getDispatcher(proxyUrl) : undefined;
     return await originalFetch(url, dispatcher ? { ...options, dispatcher } : options);
   } catch (err) {

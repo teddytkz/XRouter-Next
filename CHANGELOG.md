@@ -1,5 +1,8 @@
 # Unreleased
 
+## Features
+- **OpenCode free**: transport `wreq-js` dengan daftar cipher BoringSSL untuk jalur `/inference/v1` (TLS ClientHello), marker `<env>` pada ketiga bentuk request (`instructions`, `messages`, `system`), dan deklarasi tools `read`/`shell`. Probe live: native fetch `429 FreeUsageLimitError` → klien TLS `200 text/event-stream`. `wreq-js@3.2.0` dipin eksak sebagai `optionalDependencies`, dimuat lewat `createRequire` + whitelist nama paket, dan dibundel ke standalone/Docker/CLI. Bila binding native tidak tersedia, request **fail-open ke native fetch** (kembali 429, bukan 502); error transport lain tetap dilempar supaya TLS tidak diam-diam di-bypass.
+
 ## Fixes
 - **Fallback (akun mati)**: kegagalan kredensial permanen — akun di-suspend/diblokir (`TEMPORARILY_SUSPENDED`), token dicabut, atau `invalid_grant` — sekarang mengunci **seluruh akun** (`modelLock___all`) selama 24 jam, bukan lock 2 menit per model. Koneksi dengan `lastError` yang cocok juga dilewati langsung (tanpa panggilan upstream) sampai quarantine berakhir atau tes koneksi berhasil.
 - **Fallback (loop akun)**: rotasi akun berhenti setelah 5 kegagalan kredensial permanen berturut-turut dan mengembalikan error yang jelas, sehingga satu request tidak lagi berjalan melalui ratusan koneksi mati (kasus nyata: 124 dari 235 akun Kiro suspended, tiap request menunggu ~8 menit sebelum mencapai akun sehat). Rotasi 429/rate-limit tetap mencoba semua akun seperti sebelumnya.

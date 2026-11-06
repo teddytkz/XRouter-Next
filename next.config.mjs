@@ -23,13 +23,18 @@ const nextConfig = {
   // @aws-sdk/credential-providers must stay external for the same class of reason: it reads
   // ~/.aws/config and the SSO token cache from disk at runtime and resolves its credential
   // plugins by dynamic require, neither of which survives bundling.
-  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open", "@aws-sdk/credential-providers"],
+  serverExternalPackages: ["better-sqlite3", "sql.js", "node:sqlite", "bun:sqlite", "open", "@aws-sdk/credential-providers", "wreq-js"],
   turbopack: {
     root: tracingRoot
   },
   outputFileTracingRoot: tracingRoot,
   outputFileTracingExcludes: {
     "*": ["./gitbook/**/*"]
+  },
+  // wreq-js is loaded via a runtime createRequire, so tracing cannot see it.
+  // Include the platform native binding or standalone/CLI builds 502 the free lane.
+  outputFileTracingIncludes: {
+    "/*": ["./node_modules/wreq-js/**/*", "./node_modules/@wreq-js/**/*"]
   },
   images: {
     unoptimized: true

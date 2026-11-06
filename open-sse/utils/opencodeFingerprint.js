@@ -1,9 +1,14 @@
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 /**
  * Helpers for the OpenCode free-tier client fingerprint.
  *
  * Live upstream probes against OpenCode v2 (`/inference/v1`) isolate the
- * body-side half of the free-tier gate. The other half lives in the executor
- * (endpoint, session headers, `stream:true`); this module owns the tools.
+ * body-side half of the free-tier gate. The executor owns the endpoint,
+ * session headers, `stream:true` and the TLS transport; this module owns the
+ * tools and the `<env>` system marker. Missing either half (marker or tools)
+ * answers 429 FreeUsageLimitError regardless of headers, UA or session shape.
  *
  * Proven rules:
  *  - A tool named exactly `read` (lowercase) MUST be declared. `Read`/`READ` do
@@ -248,9 +253,91 @@ function noteUnavailableTools(body, flat, names) {
   }
 }
 
+// The marker gate reads text only: a foreign system prompt plus this exact block
+// passes, so the marker is appended to the caller's own prompt rather than
+// replacing it. Values mirror a real CLI instance on this host.
+const ENV_TAG = "<env>";
+const ENV_FINGERPRINT_PROMPT = [
+  "Here is some useful information about the environment you are running in:",
+  ENV_TAG,
+  `  Working directory: ${process.cwd()}`,
+  `  Workspace root folder: ${process.cwd()}`,
+  "  Is directory a git repo: no",
+  `  Platform: ${process.platform}`,
+  `  Prefer ${join(tmpdir(), "opencode")} over generic system temporary directories such as /tmp; it is pre-created and approved for external access.`,
+  "</env>",
+].join("\n");
+
+/** True when the marker is already present; a genuine opencode client is passthrough. */
+function systemCarriesEnv(system) {
+  if (typeof system === "string") return system.includes(ENV_TAG);
+  if (Array.isArray(system)) {
+    return system.some((block) => typeof block?.text === "string" && block.text.includes(ENV_TAG));
+  }
+  return false;
+}
+
+/** Append `text` to a system prompt held as a string, text blocks, or unset. */
+function appendSystemText(system, text) {
+  if (typeof system === "string") return system.trim() ? `${system}\n\n${text}` : text;
+  const blocks = Array.isArray(system) ? [...system] : [];
+  for (let i = blocks.length - 1; i >= 0; i--) {
+    const block = blocks[i];
+    if (typeof block?.text === "string") {
+      blocks[i] = { ...block, text: block.text.trim() ? `${block.text}\n\n${text}` : text };
+      return blocks;
+    }
+  }
+  return [...blocks, { type: "text", text }];
+}
+
+/**
+ * Append the CLI's environment marker without replacing the caller's content,
+ * covering all three request shapes: Responses (`instructions`), chat
+ * (`messages[]` system) and claude-top-level (`system`). Fail-open — the marker
+ * is an enhancement, so a surprising body is left untouched.
+ */
+export function applyEnvFingerprint(body, flat, { claude = false } = {}) {
+  try {
+    if (!body || typeof body !== "object") return false;
+
+    if (flat) {
+      if (body.instructions !== undefined && typeof body.instructions !== "string") return false;
+      if (systemCarriesEnv(body.instructions)) return false;
+      body.instructions = (typeof body.instructions === "string" && body.instructions.trim())
+        ? `${body.instructions}\n\n${ENV_FINGERPRINT_PROMPT}`
+        : ENV_FINGERPRINT_PROMPT;
+      return true;
+    }
+
+    if (claude || body.system !== undefined) {
+      if (systemCarriesEnv(body.system)) return false;
+      body.system = appendSystemText(body.system, ENV_FINGERPRINT_PROMPT);
+      return true;
+    }
+
+    if (!Array.isArray(body.messages)) return false;
+    const idx = body.messages.findIndex((msg) => msg?.role === "system");
+    if (idx >= 0) {
+      const target = body.messages[idx];
+      if (systemCarriesEnv(target.content)) return false;
+      const content = appendSystemText(target.content, ENV_FINGERPRINT_PROMPT);
+      body.messages = body.messages.map((msg, i) => (i === idx ? { ...msg, content } : msg));
+      return true;
+    }
+    body.messages = [{ role: "system", content: ENV_FINGERPRINT_PROMPT }, ...body.messages];
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Full request-side pass: satisfy the reserved-name schema rule, append the
  * fingerprint pair, and mark the appended definitions inert.
+ *
+ * The `<env>` marker is a separate gate on the /inference/v1 free lane only,
+ * so its callers invoke applyEnvFingerprint explicitly.
  *
  * @param {object} body
  * @param {boolean} flat - true for Responses tools ({name}), false for chat tools

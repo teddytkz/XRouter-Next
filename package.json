@@ -54,8 +54,10 @@
   },
   "optionalDependencies": {
     "@aws-sdk/credential-providers": "^3.1135.0",
-    "better-sqlite3": "^12.6.2"
+    "better-sqlite3": "^12.6.2",
+    "wreq-js": "3.2.0"
   },
+  "comment_wreq_js": "OpenCode free tier requires the BoringSSL cipher list; pinned exactly and loaded lazily via open-sse/services/lazyRuntime.js. Optional so an unsupported platform never fails npm install — requests then fail open to native fetch (429 instead of 502).",
   "comment_better_sqlite3": "kept in optionalDependencies so npm install doesn't fail on systems without build tools — sql.js is used as fallback at runtime",
   "comment_aws_sdk_credential_providers": "kept in optionalDependencies (npm still installs these by default) and imported lazily in shared/awsCredentials.js — only AWS Bedrock connections using profile/SSO mode need it; static accessKeyId/secretAccessKey connections never load it",
   "devDependencies": {

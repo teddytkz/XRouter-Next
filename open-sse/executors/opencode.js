@@ -7,7 +7,8 @@ import { getCapabilitiesForModel } from "../providers/capabilities.js";
 import { injectReasoningContent } from "../utils/reasoningContentInjector.js";
 import { resolveSessionId } from "../utils/sessionManager.js";
 import { isMuseSparkModel } from "../providers/models/helpers.js";
-import { applyFingerprintTools } from "../utils/opencodeFingerprint.js";
+import { applyFingerprintTools, applyEnvFingerprint } from "../utils/opencodeFingerprint.js";
+import { opencodeTlsFetch } from "../services/opencodeTlsClient.js";
 import { ANTHROPIC_API_VERSION } from "../providers/shared.js";
 import {
   normalizeResponsesInput,
@@ -409,16 +410,33 @@ export class OpenCodeExecutor extends BaseExecutor {
       // already supplied tools. ZCode/Claude Code requests normally have
       // non-empty tool arrays; skipping cloaking here triggers 403 FreeTierError.
       applyFingerprintTools(body, true);
+      applyEnvFingerprint(body, true);
     } else if (!isMessagesModel(model || body?.model) && body && typeof body === "object") {
       // The Anthropic Messages endpoint (union-alpha) is not the Zen free-tier
       // chat gate — injecting the bash/read fingerprint stubs there is rejected.
       applyFingerprintTools(body, false);
+      applyEnvFingerprint(body, false);
+    } else if (body && typeof body === "object") {
+      // /messages still needs the `<env>` marker, just not the tool stubs.
+      applyEnvFingerprint(body, false, { claude: true });
     }
     return injectReasoningContent({ provider: this.provider, model, body });
   }
 
+  // The free gate keys on the TLS ClientHello: a native Node fetch is refused
+  // no matter how faithful the body is. proxyAwareFetch delegates to directFetch
+  // when no proxy is configured and fails open to native fetch without wreq-js.
   async execute(args) {
-    return super.execute({ ...args, credentials: this.prepareRequestCredentials(args) });
+    const credentials = this.prepareRequestCredentials(args);
+    return super.execute({
+      ...args,
+      credentials,
+      directFetch: (url, options) => opencodeTlsFetch(url, {
+        method: options.method,
+        headers: options.headers,
+        body: options.body,
+      }, { signal: options.signal }),
+    });
   }
 
   // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now
