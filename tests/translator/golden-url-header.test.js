@@ -24,11 +24,16 @@ const SPECIALIZED = new Set([
 ]);
 
 // Sanitize header: khử token + field thời gian động (kimi X-Msh-Device-Id) để snapshot ổn định.
+// CodeBuddy mints fresh request/conversation UUIDs per buildHeaders call.
+const CODEBUDDY_ID_HEADERS = new Set([
+  "X-Request-ID", "X-Conversation-ID", "X-Conversation-Request-ID", "X-Conversation-Message-ID",
+]);
+
 function sanitize(headers) {
   const out = {};
   for (const [k, v] of Object.entries(headers)) {
     // minimax-code mints a fresh UUID session id per buildHeaders call
-    if (k === "X-Mavis-Session-Id") { out[k] = "<UUID>"; continue; }
+    if (k === "X-Mavis-Session-Id" || CODEBUDDY_ID_HEADERS.has(k)) { out[k] = "<UUID>"; continue; }
     out[k] = typeof v === "string"
       ? v.replace(/Bearer .+/, "Bearer <TOK>")
           .replace(/sk-test-APIKEY|tok-test-ACCESS/g, "<CRED>")

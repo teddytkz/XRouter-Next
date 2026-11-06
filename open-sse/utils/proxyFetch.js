@@ -341,8 +341,26 @@ async function createBypassRequest(parsedUrl, realIP, options) {
   });
 }
 
+function bypassProxyForDirectTransport(url, options, proxyOptions) {
+  if (options.directFetch?.requiresDirectTransport !== true) return false;
+  if (proxyOptions?.strictProxy === true) {
+    throw new Error("[ProxyFetch] Proxy/relay incompatible with direct transport (strictProxy=true)");
+  }
+  let host = "upstream";
+  try { host = new URL(url).hostname; } catch { /* keep generic reason */ }
+  console.warn(`[ProxyFetch] Proxy/relay bypassed for ${host}: transport requires a direct TLS handshake`);
+  return true;
+}
+
 export async function proxyAwareFetch(url, options = {}, proxyOptions = null) {
   const targetUrl = typeof url === "string" ? url : url.toString();
+
+  // Every proxy/relay path re-originates TLS with Node's ClientHello, losing the
+  // fingerprint the opencode free tier checks. Non-strict pools fall back here;
+  // strict pools fail rather than silently sending a request that gets 429.
+  if (bypassProxyForDirectTransport(targetUrl, options, proxyOptions)) {
+    return fetchWithTlsFallback(url, options, null);
+  }
 
   // Vercel relay: forward request via relay headers
   const vercelRelayUrl = normalizeString(proxyOptions?.vercelRelayUrl);

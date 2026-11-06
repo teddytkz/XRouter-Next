@@ -428,15 +428,15 @@ export class OpenCodeExecutor extends BaseExecutor {
   // when no proxy is configured and fails open to native fetch without wreq-js.
   async execute(args) {
     const credentials = this.prepareRequestCredentials(args);
-    return super.execute({
-      ...args,
-      credentials,
-      directFetch: (url, options) => opencodeTlsFetch(url, {
-        method: options.method,
-        headers: options.headers,
-        body: options.body,
-      }, { signal: options.signal }),
-    });
+    const directFetch = (url, options) => opencodeTlsFetch(url, {
+      method: options.method,
+      headers: options.headers,
+      body: options.body,
+    }, { signal: options.signal });
+    // An HTTP relay re-originates TLS with Node's ClientHello, losing the
+    // fingerprint the free tier checks; this transport cannot be relayed.
+    directFetch.requiresDirectTransport = true;
+    return super.execute({ ...args, credentials, directFetch });
   }
 
   // Free tier moved from /zen/v1 to /inference/v1 (OpenCode v2); /zen/v1 now

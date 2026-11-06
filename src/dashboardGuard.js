@@ -48,7 +48,11 @@ const ALWAYS_PROTECTED = [
   "/api/oauth/kiro/auto-import",
   "/api/oauth/zed/auto-import",
   "/api/oauth/minimax-code/lease",
+  "/api/oauth/minimax-code/lease-status",
+  "/api/oauth/minimax-code/lease-connect",
   "/api/oauth/minimax-code-global/lease",
+  "/api/oauth/minimax-code-global/lease-status",
+  "/api/oauth/minimax-code-global/lease-connect",
 ];
 
 // Require auth, but allow through if requireLogin is disabled
@@ -101,7 +105,11 @@ const LOCAL_ONLY_PATHS = [
   "/api/oauth/kiro/auto-import",
   "/api/oauth/zed/auto-import",
   "/api/oauth/minimax-code/lease",
+  "/api/oauth/minimax-code/lease-status",
+  "/api/oauth/minimax-code/lease-connect",
   "/api/oauth/minimax-code-global/lease",
+  "/api/oauth/minimax-code-global/lease-status",
+  "/api/oauth/minimax-code-global/lease-connect",
   "/api/auth/reset-password",
   "/api/headroom/start",
   "/api/headroom/stop",

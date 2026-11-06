@@ -46,4 +46,33 @@ describe("proxyFetch directFetch fail-open", () => {
       })).rejects.toThrow("upstream said 500");
     });
   });
+
+  for (const [name, proxyOptions] of [
+    ["Vercel relay", { vercelRelayUrl: "https://relay.invalid" }],
+    ["standard proxy pool", { url: "http://127.0.0.1:9", enabled: true, proxyPoolId: "pool" }],
+  ]) {
+    it(`keeps the impersonated TLS handshake when a ${name} is configured`, async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const directFetch = vi.fn().mockResolvedValue(new Response("tls"));
+      directFetch.requiresDirectTransport = true;
+
+      const res = await proxyAwareFetch("https://opencode.ai/inference/v1/chat/completions", {
+        method: "POST", body: "{}", directFetch,
+      }, proxyOptions);
+
+      expect(await res.text()).toBe("tls");
+      expect(directFetch).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalled();
+    });
+  }
+
+  it("refuses to bypass a strict proxy for a transport that needs its own TLS", async () => {
+    const directFetch = vi.fn().mockResolvedValue(new Response("tls"));
+    directFetch.requiresDirectTransport = true;
+
+    await expect(proxyAwareFetch("https://opencode.ai/inference/v1/chat/completions", {
+      method: "POST", body: "{}", directFetch,
+    }, { vercelRelayUrl: "https://relay.invalid", strictProxy: true })).rejects.toThrow("strictProxy=true");
+    expect(directFetch).not.toHaveBeenCalled();
+  });
 });

@@ -285,6 +285,34 @@ describe("dashboard guard local-only access", () => {
 
     expect(response).toBe(mocks.nextResponse);
   });
+
+  // MiniMax lease routes talk to a host-local token broker. The UI path is
+  // lease-connect (not the /lease prefix upstream protected), so lock both.
+  for (const provider of ["minimax-code", "minimax-code-global"]) {
+    for (const action of ["lease-status", "lease-connect"]) {
+      const pathname = `/api/oauth/${provider}/${action}`;
+      const local = () => localRequest(pathname, {
+        host: "localhost:20128",
+        origin: "http://localhost:20128",
+      });
+
+      it(`keeps ${pathname} local-only`, async () => {
+        const remote = await proxy(request(pathname, { host: "router.example.com" }));
+        expect(remote.status).toBe(403);
+      });
+
+      it(`requires a JWT on ${pathname} even when requireLogin=false`, async () => {
+        mocks.getSettings.mockResolvedValue({ requireLogin: false });
+        const response = await proxy(local());
+        expect(response.status).toBe(401);
+      });
+
+      it(`allows ${pathname} from a loopback browser with a JWT`, async () => {
+        mocks.verifyDashboardAuthToken.mockResolvedValue(true);
+        expect(await proxy(local())).toBe(mocks.nextResponse);
+      });
+    }
+  }
 });
 
 describe("dashboard guard helpers", () => {

@@ -47,25 +47,26 @@ yang tadinya lulus jadi gagal.** Kegagalan pre-existing yang normal:
 |---|---|
 | Fork | XRouter-Next (`teddytkz/XRouter-Next`) |
 | Upstream | `/home/momo/9router/9router` (`decolua/9router`), remote `upstream` |
-| Sync terakhir (upstream) | **`f39d8f07`** — rilis v0.5.109 (2026-10-23) |
-| Upstream tip saat sync | `f39d8f07` — v0.5.109 (sama, sudah di tip) |
-| Sync sebelumnya (upstream) | `87a74e1b` — v0.5.104; `ce4460ef` — v0.5.99 |
-| HEAD fork saat sync | `270c3205` (v0.1.10) |
+| Sync terakhir (upstream) | **`1fe586bb`** — rilis v0.5.112 (2026-10-28) |
+| Upstream tip saat sync | `1fe586bb` — v0.5.112 (sama, sudah di tip) |
+| Sync sebelumnya (upstream) | `f39d8f07` — v0.5.109; `87a74e1b` — v0.5.104; `ce4460ef` — v0.5.99 |
+| HEAD fork saat sync | lihat `git log -1` (port dicommit setelah `09596302`; v0.1.10) |
 | Versi fork | `0.1.10` (jalur versi sendiri — bump upstream tidak diikuti) |
-| Tanggal sync | 2026-10-26 |
+| Tanggal sync | 2026-11-06 |
 
 ### Next check
 
-Mulai dari `f39d8f07` (upstream tip). Sync berikutnya:
+Mulai dari `1fe586bb` (upstream tip). Sync berikutnya:
 
 ```bash
-git fetch upstream
-git log --oneline f39d8f07..upstream/master
+git fetch localupstream
+git log --oneline 1fe586bb..localupstream/master
 ```
 
-Rentang v0.5.104→v0.5.109 berisi 38 commit, di-cherry-pick satu per satu
-(36 masuk, 0 regresi). `38a0c449` (web-cookie) sengaja ditunda. Lihat
-`v0.5.109-2026-10-26.md`.
+Rentang v0.5.109→v0.5.112 berisi 31 commit: 24 cherry-pick, 3 setara manual,
+4 dilewati, plus bypass relay TLS OpenCode dan guard MiniMax lease. Detail
+lengkap ada di `v0.5.112-2026-11-06.md`. `38a0c449` (web-cookie) masih
+sengaja ditunda.
 
 ### Catatan penting untuk sync berikutnya
 
@@ -94,3 +95,4 @@ gambaran sistem.
 | Port VansRouter | — (fork saudara) | 2026-10-11 | [v0.1.5-2026-10-11.md](./v0.1.5-2026-10-11.md) | 29 provider + token saver + security/ops hardening, 0 regresi |
 | v0.5.104 → v0.5.109 | `f39d8f07` | 2026-10-26 | [v0.5.109-2026-10-26.md](./v0.5.109-2026-10-26.md) | 36 cherry-pick (web-cookie ditunda), 4 konflik manual, 0 regresi |
 | Port VansRouter (gap) | — (fork saudara) | 2026-10-26 | [v0.1.10-2026-10-26-vans-gap.md](./v0.1.10-2026-10-26-vans-gap.md) | CodeBuddy sanitasi, loop guard, apiKeyName, kuota Kimchi, free tier, context_length combo, 0 regresi |
+| v0.5.109 → v0.5.112 | `1fe586bb` | 2026-11-06 | [v0.5.112-2026-11-06.md](./v0.5.112-2026-11-06.md) | 31 commit: 24 cherry-pick, 3 setara manual, 4 dilewati; OpenCode relay bypass + MiniMax lease guard |

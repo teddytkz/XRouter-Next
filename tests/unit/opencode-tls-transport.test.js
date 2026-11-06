@@ -41,6 +41,7 @@ describe("OpenCode free-tier TLS transport", () => {
     expect(result.headers["x-opencode-session"]).toMatch(/^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/);
     const [, options] = proxyFetchMock.mock.calls[0];
     expect(typeof options.directFetch).toBe("function");
+    expect(options.directFetch.requiresDirectTransport).toBe(true);
   });
 
   it("routes the direct path through the impersonated TLS client, with body and signal", async () => {
