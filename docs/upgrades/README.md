@@ -66,7 +66,9 @@ git log --oneline 1fe586bb..localupstream/master
 Rentang v0.5.109→v0.5.112 berisi 31 commit: 24 cherry-pick, 3 setara manual,
 4 dilewati, plus bypass relay TLS OpenCode dan guard MiniMax lease. Detail
 lengkap ada di `v0.5.112-2026-11-06.md`. `38a0c449` (web-cookie) masih
-sengaja ditunda.
+sengaja ditunda; daftar 8 provider-nya (6 baru: chatgpt-web, deepseek-web,
+gemini-web, muse-web, uc-web, veoaifree-web; 2 lama: grok-web, perplexity-web)
+sudah dicatat di ledger tersebut, tidak perlu membaca ulang commit 14k baris.
 
 ### Catatan penting untuk sync berikutnya
 
