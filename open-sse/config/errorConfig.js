@@ -41,6 +41,53 @@ export const TRANSIENT_COOLDOWN_MS = 30 * 1000;
 // Hard cap for provider-reported rate limit cooldown (e.g. codex resets_at can be 5-6h)
 export const MAX_RATE_LIMIT_COOLDOWN_MS = 30 * 60 * 1000;
 
+// Parse a positive integer env override, falling back to a default.
+function envInt(name, def) {
+  const raw = process.env[name];
+  if (raw == null || raw === "") return def;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : def;
+}
+
+// Credential-level failures that retrying cannot fix: the account itself is
+// suspended, revoked, or was handed a token the upstream will never accept.
+// Switching model does not help, so the WHOLE account is locked (modelLock___all)
+// for a long window instead of the usual 2-minute per-model cooldown. Without
+// this, a dead pool (e.g. 120 suspended Kiro accounts) becomes eligible again
+// every 2 minutes and every client request walks the entire pool.
+// Env: PERMANENT_ACCOUNT_COOLDOWN_MS.
+export const PERMANENT_ACCOUNT_COOLDOWN_MS = envInt(
+  "PERMANENT_ACCOUNT_COOLDOWN_MS",
+  24 * 60 * 60 * 1000
+);
+
+// Lowercase substrings that identify a permanent account-level failure. Keep
+// this list narrow: a false positive removes a healthy account from rotation.
+export const PERMANENT_ACCOUNT_ERROR_PATTERNS = [
+  "temporarily suspended",
+  "account suspended",
+  "account has been suspended",
+  "temporarily blocked",
+  "account has been disabled",
+  "account is disabled",
+  "bearer token included in the request is invalid",
+  "token has been revoked",
+  "token was revoked",
+  "refresh_token_reused",
+  "invalid_grant",
+];
+
+// Account rotation stops after this many consecutive permanent credential
+// failures in one request. A pool can legitimately mix healthy and dead
+// accounts, but N dead credentials in a row means the pool/config is broken;
+// continuing to walk hundreds of connections turns one request into minutes of
+// upstream calls and makes clients (opencode, Claude Code, ...) time out.
+// Env: MAX_CONSECUTIVE_PERMANENT_ACCOUNT_FAILURES.
+export const MAX_CONSECUTIVE_PERMANENT_ACCOUNT_FAILURES = envInt(
+  "MAX_CONSECUTIVE_PERMANENT_ACCOUNT_FAILURES",
+  5
+);
+
 // Cooldown durations (ms)
 const COOLDOWN = {
   long: 2 * 60 * 1000,

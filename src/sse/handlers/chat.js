@@ -23,6 +23,8 @@ import { handleComboChat, handleFusionChat, detectRequiredCapabilities } from "o
 import { augmentModelsWithCapacityAdapter, withCapacityAdapterStripping, getActiveAdapterStrategy } from "open-sse/services/capacityAdapter.js";
 import { handleBypassRequest } from "open-sse/utils/bypassHandler.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
+import { MAX_CONSECUTIVE_PERMANENT_ACCOUNT_FAILURES } from "open-sse/config/errorConfig.js";
+import { isPermanentAccountError } from "open-sse/services/accountFallback.js";
 import { detectFormatByEndpoint } from "open-sse/translator/formats.js";
 import { resolveSessionIdentity } from "open-sse/utils/sessionManager.js";
 import * as log from "../utils/logger.js";
@@ -307,8 +309,21 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
   // returning 503 immediately. Bounded to 1 retry per request, aborted on client
   // disconnect. Ported from VansRouter.
   let cooldownRetries = 0;
+  // Dead-credential breaker: count consecutive suspended/revoked accounts. A
+  // large pool with a dead prefix would otherwise make ONE client request walk
+  // every connection (each upstream call taking seconds) before failing.
+  let consecutivePermanentFailures = 0;
 
   while (true) {
+    // The client (opencode, Claude Code, a dashboard ping) may have timed out or
+    // been cancelled while we walked accounts. Without this check the gateway
+    // keeps calling upstreams for a response nobody is listening to, burning
+    // rate-limit budget and extending the dead-account storm.
+    if (request?.signal?.aborted) {
+      log.info("CHAT", `[${provider}/${model}] client disconnected — aborting account rotation`);
+      return new Response(null, { status: 499 });
+    }
+
     const credentials = await getProviderCredentials(provider, excludeConnectionIds, model, { requestedModel: requestedModel || model });
 
     // All accounts unavailable
@@ -690,6 +705,16 @@ async function handleSingleModelChat(body, modelStr, clientRawRequest = null, re
         incrementFailover(credentials.connectionId);
       } catch { /* fail-open */ }
       log.warn("FALLBACK", `⇄ ACC:${credentials.connectionName} UNAVAILABLE (${result.status}) → NEXT ACCOUNT`);
+      const permanentFailure = isPermanentAccountError(result.status, result.error);
+      consecutivePermanentFailures = permanentFailure ? consecutivePermanentFailures + 1 : 0;
+      if (permanentFailure && consecutivePermanentFailures >= MAX_CONSECUTIVE_PERMANENT_ACCOUNT_FAILURES) {
+        // Do not walk a dead pool: return a clear, fast error instead of
+        // spending minutes on upstream calls the client will abandon anyway.
+        const detail = typeof result.error === "string" ? result.error.slice(0, 160) : "";
+        const message = `[${provider}/${model}] ${consecutivePermanentFailures} consecutive accounts failed with a credential error (suspended/revoked/invalid token) — stopped rotating. Last error: ${detail}`;
+        log.error("FALLBACK", message);
+        return errorResponse(result.status || HTTP_STATUS.SERVICE_UNAVAILABLE, message, lastHeaders);
+      }
       excludeConnectionIds.add(credentials.connectionId);
       lastError = result.error;
       lastStatus = result.status;

@@ -1,4 +1,63 @@
-import { ERROR_RULES, BACKOFF_CONFIG, TRANSIENT_COOLDOWN_MS } from "../config/errorConfig.js";
+import {
+  ERROR_RULES,
+  BACKOFF_CONFIG,
+  TRANSIENT_COOLDOWN_MS,
+  PERMANENT_ACCOUNT_COOLDOWN_MS,
+  PERMANENT_ACCOUNT_ERROR_PATTERNS,
+} from "../config/errorConfig.js";
+
+// Statuses that can carry a credential-level failure. 400 is included for OAuth
+// refresh errors (`invalid_grant`), which upstreams report as a bad request.
+const PERMANENT_ACCOUNT_STATUSES = new Set([400, 401, 402, 403]);
+
+/**
+ * Is this failure about the CREDENTIAL itself (suspended / revoked / invalid
+ * token) rather than about the model or the request?
+ *
+ * Callers must lock the whole account, not just the requested model, and for a
+ * long cooldown: the same credential will keep failing for every model.
+ *
+ * @param {number|string|null|undefined} status - upstream HTTP status
+ * @param {string|object|null} errorText - upstream error payload/message
+ * @returns {boolean}
+ */
+export function isPermanentAccountError(status, errorText) {
+  const text = errorText
+    ? (typeof errorText === "string" ? errorText : JSON.stringify(errorText)).toLowerCase()
+    : "";
+  if (!text) return false;
+
+  const hasStatus = status !== null && status !== undefined && status !== "";
+  if (hasStatus) {
+    const numeric = Number(status);
+    // Non-numeric status (e.g. a provider code) → fall back to text matching.
+    if (Number.isFinite(numeric) && !PERMANENT_ACCOUNT_STATUSES.has(numeric)) return false;
+  }
+
+  return PERMANENT_ACCOUNT_ERROR_PATTERNS.some((pattern) => text.includes(pattern));
+}
+
+/**
+ * Check a persisted connection for an active permanent-failure quarantine.
+ * A successful request or connection test clears `lastError`, which lifts it.
+ *
+ * @param {object|null} connection - connection record with lastError/errorCode/lastErrorAt
+ * @param {number} [now]
+ * @returns {boolean}
+ */
+export function isAccountQuarantined(connection, now = Date.now()) {
+  if (!connection) return false;
+  const at = connection.lastErrorAt ? new Date(connection.lastErrorAt).getTime() : 0;
+  if (!at || Number.isNaN(at) || now - at > PERMANENT_ACCOUNT_COOLDOWN_MS) return false;
+  return isPermanentAccountError(connection.errorCode, connection.lastError);
+}
+
+/** ISO timestamp at which a permanent-failure quarantine expires. */
+export function getQuarantineUntil(connection) {
+  const at = connection?.lastErrorAt ? new Date(connection.lastErrorAt).getTime() : NaN;
+  if (Number.isNaN(at)) return null;
+  return new Date(at + PERMANENT_ACCOUNT_COOLDOWN_MS).toISOString();
+}
 
 /**
  * Calculate exponential backoff cooldown for rate limits (429)

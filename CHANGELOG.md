@@ -1,3 +1,10 @@
+# Unreleased
+
+## Fixes
+- **Fallback (akun mati)**: kegagalan kredensial permanen — akun di-suspend/diblokir (`TEMPORARILY_SUSPENDED`), token dicabut, atau `invalid_grant` — sekarang mengunci **seluruh akun** (`modelLock___all`) selama 24 jam, bukan lock 2 menit per model. Koneksi dengan `lastError` yang cocok juga dilewati langsung (tanpa panggilan upstream) sampai quarantine berakhir atau tes koneksi berhasil.
+- **Fallback (loop akun)**: rotasi akun berhenti setelah 5 kegagalan kredensial permanen berturut-turut dan mengembalikan error yang jelas, sehingga satu request tidak lagi berjalan melalui ratusan koneksi mati (kasus nyata: 124 dari 235 akun Kiro suspended, tiap request menunggu ~8 menit sebelum mencapai akun sehat). Rotasi 429/rate-limit tetap mencoba semua akun seperti sebelumnya.
+- **Fallback (client disconnect)**: rotasi akun berhenti saat client sudah memutus koneksi (timeout opencode/ping dashboard). Sebelumnya gateway tetap menghubungi upstream satu per satu setelah client pergi, menghabiskan kuota dan memperpanjang badai error.
+
 # XRouter-Next v0.1.10 (2026-10-26)
 
 Sync upstream `v0.5.104 → v0.5.109` (36 commit; `38a0c449` web-cookie ditunda). Detail: [`docs/upgrades/v0.5.109-2026-10-26.md`](./docs/upgrades/v0.5.109-2026-10-26.md).

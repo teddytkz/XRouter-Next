@@ -1,7 +1,16 @@
 import { getProviderConnections, validateApiKey, updateProviderConnection, getSettings, getProxyPools } from "@/lib/localDb";
 import { resolveConnectionProxyConfig, pickProxyPoolId } from "@/lib/network/connectionProxy";
-import { formatRetryAfter, checkFallbackError, isModelLockActive, buildModelLockUpdate, getEarliestModelLockUntil } from "open-sse/services/accountFallback.js";
-import { MAX_RATE_LIMIT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
+import {
+  formatRetryAfter,
+  checkFallbackError,
+  isModelLockActive,
+  buildModelLockUpdate,
+  getEarliestModelLockUntil,
+  isPermanentAccountError,
+  isAccountQuarantined,
+  getQuarantineUntil,
+} from "open-sse/services/accountFallback.js";
+import { MAX_RATE_LIMIT_COOLDOWN_MS, PERMANENT_ACCOUNT_COOLDOWN_MS } from "open-sse/config/errorConfig.js";
 import { classify429 } from "open-sse/utils/classify429.js";
 import { resolveProviderId, FREE_PROVIDERS } from "@/shared/constants/providers.js";
 import { getAntigravityQuotaCache, getAntigravityModelQuota } from "./antigravityQuota.js";
@@ -121,6 +130,11 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     const availableConnections = connections.filter(c => {
       if (excludeSet.has(c.id)) return false;
       if (isModelLockActive(c, model)) return false;
+      // A permanent credential failure (suspended/revoked account) is quarantined
+      // account-wide. The short per-model lock expires after 2 minutes, but the
+      // connection is still dead; retrying it on every request would make a dead
+      // pool walk hundreds of upstreams per request.
+      if (isAccountQuarantined(c)) return false;
       const enabled = c.providerSpecificData?.enabledModels;
       if (providerId === "codex" && Array.isArray(enabled) && enabled.length && requestedModel && !enabled.includes(requestedModel)) return false;
       // Antigravity: skip if live quota exhausted for this model
@@ -202,9 +216,14 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
     }
 
     if (availableConnections.length === 0) {
-      // Find earliest persistent lock or lazy Antigravity quota-cache reset for retry timing.
+      // Find earliest persistent lock, quarantine expiry, or lazy Antigravity
+      // quota-cache reset for retry timing.
       const lockedConns = connections.filter(c => isModelLockActive(c, model));
-      const expiries = lockedConns.map(c => getEarliestModelLockUntil(c)).filter(Boolean);
+      const quarantinedConns = connections.filter(c => isAccountQuarantined(c));
+      const expiries = [
+        ...lockedConns.map(c => getEarliestModelLockUntil(c)),
+        ...quarantinedConns.map(c => getQuarantineUntil(c)),
+      ].filter(Boolean);
       if (isAntigravity && model && antigravityQuotaCache) {
         connections.forEach((c) => {
           const connQuotas = antigravityQuotaCache.get(c.id);
@@ -215,7 +234,7 @@ export async function getProviderCredentials(provider, excludeConnectionIds = nu
       }
       const earliest = expiries.sort()[0] || null;
       if (earliest) {
-        const earliestConn = lockedConns[0];
+        const earliestConn = lockedConns[0] || quarantinedConns[0];
         log.warn("AUTH", `${provider} | all ${connections.length} accounts locked for ${model || "all"} (${formatRetryAfter(earliest)}) | lastError=${earliestConn?.lastError?.slice(0, 50)}`);
         return {
           allRateLimited: true,
@@ -339,9 +358,18 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   // GitHub premium-request exhaustion is account-wide until the next UTC month.
   const githubResetAtMs = githubMonthlyResetMs(status, errorText, provider);
 
+  // Suspended / revoked credentials are account-wide and permanent. A short
+  // per-model lock would let the dead account back into rotation every couple of
+  // minutes; quarantine it instead (test or a successful request clears it).
+  const permanentAccountFailure = isPermanentAccountError(status, errorText);
+
   // Provider-specific precise cooldown (e.g. codex usage_limit_reached resets_at) overrides backoff
   let shouldFallback, cooldownMs, newBackoffLevel;
-  if (githubResetAtMs) {
+  if (permanentAccountFailure) {
+    shouldFallback = true;
+    cooldownMs = PERMANENT_ACCOUNT_COOLDOWN_MS;
+    newBackoffLevel = backoffLevel;
+  } else if (githubResetAtMs) {
     shouldFallback = true;
     cooldownMs = githubResetAtMs - Date.now();
     newBackoffLevel = 0;
@@ -366,7 +394,10 @@ export async function markAccountUnavailable(connectionId, status, errorText, pr
   if (!shouldFallback) return { shouldFallback: false, cooldownMs: 0 };
 
   const reason = typeof errorText === "string" ? errorText.slice(0, 200) : "Provider error";
-  const lockUpdate = buildModelLockUpdate(githubResetAtMs ? null : model, cooldownMs);
+  // `null` model → account-level lock (modelLock___all), used for failures that
+  // are not model-specific: GitHub monthly quota and permanent credential loss.
+  const accountWide = permanentAccountFailure || !!githubResetAtMs;
+  const lockUpdate = buildModelLockUpdate(accountWide ? null : model, cooldownMs);
 
   await updateProviderConnection(connectionId, {
     ...lockUpdate,
